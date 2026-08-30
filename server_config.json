@@ -1,0 +1,16 @@
+{
+  "version": "0.8.9",
+  "host": "127.0.0.1",
+  "port": 8765,
+  "launch_mode": "app",
+  "watchdog_timeout_sec": 300,
+  "auto_open_browser": true,
+  "default_temperature": 0.7,
+  "default_top_k": 3,
+  "language": "he-IL",
+  "voice_rate": 1.05,
+  "voice_pitch": 1.0,
+  "api_keys": [
+    "gn-613c1dbc3288e8962b2ba24bfe3c7aa8"
+  ]
+}
