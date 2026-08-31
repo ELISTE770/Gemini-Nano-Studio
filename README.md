@@ -1,4 +1,4 @@
-# 🌟 Gemini Nano Studio Ultra (v0.8.9)
+# 🌟 Gemini Nano Studio (v0.8.9)
 
 <div align="center">
 
