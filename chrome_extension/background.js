@@ -1,29 +1,12 @@
 // Gemini Nano Studio Extension - Background Service Worker
 
-// Configure extension action click behavior based on saved preference
-chrome.action.onClicked.addListener(async (tab) => {
-  const { open_mode } = await chrome.storage.local.get('open_mode');
-  const mode = open_mode || 'sidepanel';
+// Enable Side Panel opening natively when extension icon is clicked
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error('SidePanel behavior error:', error));
 
-  if (mode === 'tab') {
-    chrome.tabs.create({ url: 'http://127.0.0.1:8765/gemini_nano_chat.html' });
-  } else if (mode === 'popup') {
-    chrome.windows.create({
-      url: chrome.runtime.getURL('sidepanel.html'),
-      type: 'popup',
-      width: 440,
-      height: 720
-    });
-  } else {
-    // Default: Side Panel
-    if (tab?.windowId) {
-      chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
-    }
-  }
-});
-
-// Initialize Context Menus
 chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+  // Initialize Context Menus
   chrome.contextMenus.removeAll(() => {
     // 1. Explain selected text
     chrome.contextMenus.create({

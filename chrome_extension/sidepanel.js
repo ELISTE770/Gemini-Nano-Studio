@@ -61,9 +61,11 @@ function setupEventListeners() {
 
   // History Controls
   const historyBtn = document.getElementById('historyBtn');
+  const historyChipBtn = document.getElementById('historyChipBtn');
   const closeHistoryBtn = document.getElementById('closeHistoryBtn');
   const historyModal = document.getElementById('historyModal');
   const historySearchInput = document.getElementById('historySearchInput');
+  const historyNewChatBtn = document.getElementById('historyNewChatBtn');
   const clearAllHistoryBtn = document.getElementById('clearAllHistoryBtn');
 
   // Settings Modal Controls
@@ -90,13 +92,15 @@ function setupEventListeners() {
     contextLinkBtn.addEventListener('click', toggleContextLink);
   }
 
-  // History Modal Handlers
-  if (historyBtn) {
-    historyBtn.addEventListener('click', () => {
-      renderHistoryList();
-      historyModal.classList.remove('hidden');
-    });
-  }
+  // History Open Handlers
+  const openHistory = () => {
+    renderHistoryList();
+    if (historyModal) historyModal.classList.remove('hidden');
+  };
+
+  if (historyBtn) historyBtn.addEventListener('click', openHistory);
+  if (historyChipBtn) historyChipBtn.addEventListener('click', openHistory);
+
   if (closeHistoryBtn) {
     closeHistoryBtn.addEventListener('click', () => historyModal.classList.add('hidden'));
   }
@@ -108,6 +112,12 @@ function setupEventListeners() {
   if (historySearchInput) {
     historySearchInput.addEventListener('input', (e) => {
       renderHistoryList(e.target.value);
+    });
+  }
+  if (historyNewChatBtn) {
+    historyNewChatBtn.addEventListener('click', () => {
+      startNewChat();
+      if (historyModal) historyModal.classList.add('hidden');
     });
   }
   if (clearAllHistoryBtn) {
@@ -221,14 +231,17 @@ async function renderHistoryList(filterText = '') {
   }
 
   if (list.length === 0) {
-    container.innerHTML = `<div style="text-align:center; padding: 20px 0; color: var(--text-muted); font-size: 11px;">${currentLanguage === 'en' ? 'No conversations found' : 'לא נמצאו שיחות שמורות'}</div>`;
+    container.innerHTML = `<div style="text-align:center; padding: 24px 0; color: var(--text-muted); font-size: 11.5px;">${currentLanguage === 'en' ? 'No saved conversations yet' : 'עדיין אין שיחות שמורות'}</div>`;
     return;
   }
 
   container.innerHTML = '';
   list.forEach(c => {
     const item = document.createElement('div');
-    item.className = 'history-item';
+    const isActive = c.id === activeChatId;
+    item.className = 'history-item' + (isActive ? ' active' : '');
+    if (isActive) item.style.borderColor = 'rgba(59, 130, 246, 0.6)';
+
     const dateStr = new Date(c.updatedAt || c.createdAt || Date.now()).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const msgCount = (c.messages || []).length;
 
@@ -382,7 +395,6 @@ function setLanguage(lang) {
   const sel = document.getElementById('settingLang');
   if (sel) sel.value = currentLanguage;
 
-  // Update Footer Attribution dynamically
   const footerCredit = document.getElementById('extFooterCredit');
   if (footerCredit) {
     if (currentLanguage === 'en') {
@@ -626,6 +638,7 @@ async function sendMessage(overrideText = null, isDirectAction = false) {
   // Append user message to UI
   appendMessage('user', text);
   conversationHistory.push({ role: 'user', content: text });
+  saveConversationHistory();
 
   // Prepare assistant message placeholder
   const aiBubble = appendMessage('ai', '', true);
@@ -984,9 +997,12 @@ function saveConversationHistory() {
     sidepanel_active_chat_id: activeChatId
   });
 
+  const firstUserMsg = conversationHistory.find(m => m.role === 'user');
+  const chatTitle = firstUserMsg ? firstUserMsg.content.substring(0, 32) : 'שיחת סרגל צד';
+
   const sharedConversation = {
     id: activeChatId,
-    title: conversationHistory[0]?.content ? conversationHistory[0].content.substring(0, 30) : 'שיחת סרגל צד (Extension)',
+    title: chatTitle,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: payload
