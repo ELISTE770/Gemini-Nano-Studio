@@ -59,6 +59,13 @@ function setupEventListeners() {
   const voiceBtn = document.getElementById('voiceBtn');
   const contextLinkBtn = document.getElementById('contextLinkBtn');
 
+  // History Controls
+  const historyBtn = document.getElementById('historyBtn');
+  const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+  const historyModal = document.getElementById('historyModal');
+  const historySearchInput = document.getElementById('historySearchInput');
+  const clearAllHistoryBtn = document.getElementById('clearAllHistoryBtn');
+
   // Settings Modal Controls
   const openSettingsBtn = document.getElementById('openSettingsBtn');
   const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -78,12 +85,36 @@ function setupEventListeners() {
   document.getElementById('toolTranslate').addEventListener('click', handleTranslateSelection);
   document.getElementById('toolRewrite').addEventListener('click', handleRewriteSelection);
 
-  // 3. Toggle Context Link Button (Pill in header)
+  // Toggle Context Link Button (Pill in header)
   if (contextLinkBtn) {
     contextLinkBtn.addEventListener('click', toggleContextLink);
   }
 
-  // 1. Settings Modal Handlers
+  // History Modal Handlers
+  if (historyBtn) {
+    historyBtn.addEventListener('click', () => {
+      renderHistoryList();
+      historyModal.classList.remove('hidden');
+    });
+  }
+  if (closeHistoryBtn) {
+    closeHistoryBtn.addEventListener('click', () => historyModal.classList.add('hidden'));
+  }
+  if (historyModal) {
+    historyModal.addEventListener('click', (e) => {
+      if (e.target === historyModal) historyModal.classList.add('hidden');
+    });
+  }
+  if (historySearchInput) {
+    historySearchInput.addEventListener('input', (e) => {
+      renderHistoryList(e.target.value);
+    });
+  }
+  if (clearAllHistoryBtn) {
+    clearAllHistoryBtn.addEventListener('click', clearAllHistory);
+  }
+
+  // Settings Modal Handlers
   if (openSettingsBtn) {
     openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
   }
@@ -96,7 +127,7 @@ function setupEventListeners() {
     });
   }
 
-  // 2. Open Mode Setting
+  // Open Mode Setting
   if (settingOpenMode) {
     settingOpenMode.addEventListener('change', (e) => {
       openMode = e.target.value;
@@ -176,7 +207,106 @@ function setupEventListeners() {
   });
 }
 
-// 3. Toggle Context Link (Linked vs Standalone)
+// Render Saved Conversation History List
+async function renderHistoryList(filterText = '') {
+  const container = document.getElementById('historyListContainer');
+  if (!container) return;
+
+  const { gemini_nano_conversations } = await chrome.storage.local.get('gemini_nano_conversations');
+  let list = gemini_nano_conversations || [];
+
+  if (filterText.trim()) {
+    const q = filterText.toLowerCase();
+    list = list.filter(c => (c.title || '').toLowerCase().includes(q) || (c.messages || []).some(m => m.content.toLowerCase().includes(q)));
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `<div style="text-align:center; padding: 20px 0; color: var(--text-muted); font-size: 11px;">${currentLanguage === 'en' ? 'No conversations found' : 'לא נמצאו שיחות שמורות'}</div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  list.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    const dateStr = new Date(c.updatedAt || c.createdAt || Date.now()).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const msgCount = (c.messages || []).length;
+
+    item.innerHTML = `
+      <div class="history-item-info">
+        <div class="history-item-title">${c.title || 'שיחה ללא כותרת'}</div>
+        <div class="history-item-meta">${dateStr} • ${msgCount} הודעות</div>
+      </div>
+      <button class="history-delete-btn" title="מחק שיחה">🗑️</button>
+    `;
+
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.history-delete-btn')) return;
+      loadConversation(c);
+      document.getElementById('historyModal').classList.add('hidden');
+    });
+
+    const delBtn = item.querySelector('.history-delete-btn');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteConversation(c.id);
+    });
+
+    container.appendChild(item);
+  });
+}
+
+function loadConversation(conv) {
+  destroySession();
+  activeChatId = conv.id;
+  conversationHistory = conv.messages || [];
+
+  const feed = document.getElementById('chatFeed');
+  feed.innerHTML = '';
+
+  if (conversationHistory.length === 0) {
+    feed.innerHTML = `
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">✨</div>
+        <h3 class="empty-title">${currentLanguage === 'en' ? 'Gemini Nano in Browser' : 'Gemini Nano בסרגל הצד'}</h3>
+        <p class="empty-desc">${currentLanguage === 'en' ? '100% private, on-device AI assistant. Summarize pages, explain code, and chat.' : 'עוזר בינה מלאכותית מקומי ופרטי ב-100%. שאל שאלות, סכם עמודים ותרגם טקסטים ללא צורך בענן.'}</p>
+      </div>
+    `;
+    return;
+  }
+
+  conversationHistory.forEach(msg => {
+    appendMessage(msg.role === 'user' ? 'user' : 'ai', msg.content);
+  });
+
+  showToast(currentLanguage === 'en' ? 'Conversation loaded' : 'השיחה נטענה בהצלחה');
+}
+
+async function deleteConversation(chatId) {
+  const { gemini_nano_conversations } = await chrome.storage.local.get('gemini_nano_conversations');
+  let list = gemini_nano_conversations || [];
+  list = list.filter(c => c.id !== chatId);
+  await chrome.storage.local.set({ gemini_nano_conversations: list });
+
+  if (activeChatId === chatId) {
+    startNewChat();
+  } else {
+    renderHistoryList();
+  }
+  showToast(currentLanguage === 'en' ? 'Conversation deleted' : 'השיחה נמחקה');
+}
+
+async function clearAllHistory() {
+  if (confirm(currentLanguage === 'en' ? 'Delete all saved conversations?' : 'האם למחוק את כל היסטוריית השיחות?')) {
+    await chrome.storage.local.remove(['gemini_nano_conversations', 'sidepanel_history']);
+    startNewChat();
+    renderHistoryList();
+    document.getElementById('historyModal').classList.add('hidden');
+    showToast(currentLanguage === 'en' ? 'All history cleared' : 'כל היסטוריית השיחות נמחקה');
+  }
+}
+
+// Toggle Context Link (Linked vs Standalone)
 function toggleContextLink() {
   setContextLink(!isContextLinked);
 }
@@ -236,7 +366,7 @@ function applyTheme(theme) {
   if (sel) sel.value = theme;
 }
 
-// Language Switcher
+// Language Switcher & Footer Attribution Link
 function setLanguage(lang) {
   currentLanguage = lang;
   document.documentElement.setAttribute('dir', currentLanguage === 'he' ? 'rtl' : 'ltr');
@@ -251,6 +381,16 @@ function setLanguage(lang) {
 
   const sel = document.getElementById('settingLang');
   if (sel) sel.value = currentLanguage;
+
+  // Update Footer Attribution dynamically
+  const footerCredit = document.getElementById('extFooterCredit');
+  if (footerCredit) {
+    if (currentLanguage === 'en') {
+      footerCredit.innerHTML = 'Built by <a href="https://smartbinary.org" target="_blank" rel="noopener noreferrer">Smart Binary</a>';
+    } else {
+      footerCredit.innerHTML = 'נבנה על ידי <a href="https://ivrit.smartbinary.org" target="_blank" rel="noopener noreferrer">בינארי חכם</a> (Smart Binary)';
+    }
+  }
 
   setContextLink(isContextLinked);
   chrome.storage.local.set({ sidepanel_lang: currentLanguage });
@@ -496,7 +636,7 @@ async function sendMessage(overrideText = null, isDirectAction = false) {
 
   let finalPrompt = text;
 
-  // 3. Inject active tab context if Linked Mode is enabled (and not already an explicit tool action)
+  // Inject active tab context if Linked Mode is enabled (and not already an explicit tool action)
   if (isContextLinked && !isDirectAction && !overrideText) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -818,6 +958,8 @@ async function loadSavedSettings() {
 
   if (sidepanel_lang) {
     setLanguage(sidepanel_lang);
+  } else {
+    setLanguage('he');
   }
 
   if (sidepanel_active_chat_id) {

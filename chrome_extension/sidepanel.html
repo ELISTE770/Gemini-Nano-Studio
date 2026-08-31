@@ -18,10 +18,15 @@
     </div>
 
     <div class="header-actions">
-      <!-- 3. Toggle Site Connection (Linked / Standalone) -->
+      <!-- Toggle Site Connection (Linked / Standalone) -->
       <button id="contextLinkBtn" class="context-pill linked" title="לחץ לכיבוי/הפעלת קישור לתוכן האתר הפעיל">
         <span id="contextLinkIcon">🔗</span>
         <span id="contextLinkText">קשור לאתר</span>
+      </button>
+
+      <!-- History Button -->
+      <button id="historyBtn" class="icon-btn" title="היסטוריית שיחות">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
       </button>
 
       <!-- New Chat Button -->
@@ -29,7 +34,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
 
-      <!-- 1. Settings Button -->
+      <!-- Settings Button -->
       <button id="openSettingsBtn" class="icon-btn" title="הגדרות התוסף">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -96,7 +101,38 @@
     </div>
   </footer>
 
-  <!-- 1. Full Featured Settings Modal (הגדרות התוסף) -->
+  <!-- Bottom Attribution Footer -->
+  <div class="app-credit-footer" id="extFooterCredit">
+    נבנה על ידי <a href="https://ivrit.smartbinary.org" target="_blank" rel="noopener noreferrer">בינארי חכם</a> (Smart Binary)
+  </div>
+
+  <!-- History Modal (היסטוריית שיחות) -->
+  <div id="historyModal" class="modal-backdrop hidden">
+    <div class="settings-card">
+      <div class="settings-header">
+        <div class="settings-title">
+          <span>📜</span> <span>היסטוריית שיחות</span>
+        </div>
+        <button id="closeHistoryBtn" class="icon-btn" title="סגור">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="settings-body">
+        <input type="text" id="historySearchInput" class="settings-input" placeholder="חיפוש בשיחות קודמות...">
+        
+        <div id="historyListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;">
+          <!-- Populated by JS -->
+        </div>
+
+        <button id="clearAllHistoryBtn" class="btn-secondary" style="color: #f87171; border-color: rgba(244, 63, 94, 0.3);">
+          <span>🗑️</span> <span>מחק את כל ההיסטוריה</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Featured Settings Modal (הגדרות התוסף) -->
   <div id="settingsModal" class="modal-backdrop hidden">
     <div class="settings-card">
       <div class="settings-header">
@@ -109,7 +145,7 @@
       </div>
 
       <div class="settings-body">
-        <!-- 2. Display Mode: Side Panel vs Full Tab vs Popup -->
+        <!-- Display Mode: Side Panel vs Full Tab vs Popup -->
         <div class="settings-group">
           <label class="settings-label">🖥️ אופן פתיחת התוסף</label>
           <div class="settings-desc">בחר כיצד התוסף ייפתח כברירת מחדל בלחיצה על האייקון:</div>
@@ -123,7 +159,7 @@
           </button>
         </div>
 
-        <!-- 3. Page Context Link -->
+        <!-- Page Context Link -->
         <div class="settings-group">
           <div class="settings-row">
             <div>

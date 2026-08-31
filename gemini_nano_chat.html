@@ -419,6 +419,11 @@
                     </button>
                 </div>
             </div>
+            
+            <!-- Bottom Attribution Credit -->
+            <div class="pt-2 text-center border-t border-surface-border/40 text-[10.5px] text-slate-500">
+                <span id="appCreditText">נבנה על ידי <a href="https://ivrit.smartbinary.org" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 transition font-medium">בינארי חכם</a> (Smart Binary)</span>
+            </div>
         </div>
     </aside>
 
@@ -1394,6 +1399,15 @@ console.log(data.choices[0].message.content);</div>
 
             const searchInput = document.getElementById('searchChatInput');
             if (searchInput && dict.search_placeholder) searchInput.placeholder = dict.search_placeholder;
+
+            const credit = document.getElementById('appCreditText');
+            if (credit) {
+                if (lang === 'en') {
+                    credit.innerHTML = 'Built by <a href="https://smartbinary.org" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 transition font-medium">Smart Binary</a>';
+                } else {
+                    credit.innerHTML = 'נבנה על ידי <a href="https://ivrit.smartbinary.org" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 transition font-medium">בינארי חכם</a> (Smart Binary)';
+                }
+            }
 
             renderPersonaDropdown();
         }
