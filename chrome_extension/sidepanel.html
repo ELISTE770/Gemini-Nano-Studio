@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Nano Studio - Side Panel</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <img src="icons/icon48.png" alt="Gemini Logo" class="brand-logo">
+      <div class="brand-title">
+        <span>Gemini Nano</span>
+        <span class="badge-version">v0.8.9</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <span id="modelStatusPill" class="status-pill" title="מצב מנוע Gemini Nano המקומי">
+        <span class="status-dot"></span>
+        <span id="modelStatusText">טוען...</span>
+      </span>
+
+      <!-- Switch Language Button -->
+      <button id="langToggleBtn" class="icon-btn" title="החלף שפה (HE/EN)">
+        <span style="font-size: 11px; font-weight: 700;">EN</span>
+      </button>
+
+      <!-- New Chat Button -->
+      <button id="newChatBtn" class="icon-btn" title="שיחה חדשה">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+
+      <!-- Open Full Studio Web App -->
+      <button id="openStudioBtn" class="icon-btn" title="פתח סביבת עבודה מלאה">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Quick Action Chips -->
+  <div class="quick-tools-bar">
+    <button id="toolSummarizePage" class="tool-chip primary" title="סכם את תוכן העמוד הנוכחי">
+      <span>📑</span> <span>סכם עמוד</span>
+    </button>
+    <button id="toolExplainSelection" class="tool-chip" title="הסבר טקסט שסימנת בעמוד">
+      <span>🔍</span> <span>הסבר סימון</span>
+    </button>
+    <button id="toolTranslate" class="tool-chip" title="תרגם טקסט מסומן לעברית">
+      <span>🌐</span> <span>תרגם לעברית</span>
+    </button>
+    <button id="toolRewrite" class="tool-chip" title="שכתב ושפר ניסוח">
+      <span>✍️</span> <span>שכתב</span>
+    </button>
+  </div>
+
+  <!-- Diagnostics Warning Banner (Hidden by default) -->
+  <div id="diagBanner" class="diag-banner" style="display: none;">
+    <strong>⚠️ מנוע Prompt API אינו פעיל בכרום.</strong><br>
+    יש להפעיל את הדגלים ב-<code>chrome://flags/#prompt-api-for-gemini-nano</code> ולהוריד את המודל מ-<code>chrome://components</code>.
+  </div>
+
+  <!-- Chat Messages Container -->
+  <main id="chatFeed" class="chat-container">
+    <!-- Welcome Empty State -->
+    <div id="emptyState" class="empty-state">
+      <div class="empty-icon">✨</div>
+      <h3 class="empty-title">Gemini Nano בתוך הדפדפן</h3>
+      <p class="empty-desc">עוזר בינה מלאכותית מקומי ופרטי ב-100%. שאל שאלות, סכם עמודים ותרגם טקסטים ללא צורך בענן.</p>
+    </div>
+  </main>
+
+  <!-- Input Section -->
+  <footer class="input-section">
+    <div class="input-box-wrapper">
+      <textarea id="userInput" class="chat-textarea" placeholder="שאל את Gemini Nano או סכם את העמוד..." rows="1"></textarea>
+      
+      <div class="input-controls">
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <select id="personaSelect" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 10.5px; border-radius: 6px; padding: 2px 4px; outline: none;">
+            <option value="general">🌟 עוזר כללי</option>
+            <option value="coding">👨‍💻 מתכנת Senior</option>
+            <option value="writer">✍️ עורך לשוני</option>
+            <option value="summarizer">📑 מומחה סיכום</option>
+            <option value="translator">⚡ מתרגם</option>
+          </select>
+        </div>
+
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <button id="clearChatBtn" class="icon-btn" title="נקה שיחה">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+
+          <button id="sendBtn" class="send-btn" title="שלח הודעה">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

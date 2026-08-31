@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Nano Studio - AI Side Panel",
+  "version": "0.8.9",
+  "description": "100% Private, On-Device Local AI Assistant powered by Chrome's built-in Gemini Nano model. Chat, summarize pages, explain code, and rewrite text.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "sidePanel",
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Gemini Nano Studio",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "פתח/סגור סרגל צד של Gemini Nano"
+    }
+  }
+}
