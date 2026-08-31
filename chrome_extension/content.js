@@ -1,68 +1,72 @@
 // Gemini Nano Studio Extension - Content Script for Reliable Page & Selection Extraction
 
-let lastSelectedText = '';
+let lastUserSelection = '';
 
-// Continuously keep track of user selection even when focus moves to Side Panel
+// Track user selection in real-time
 document.addEventListener('selectionchange', () => {
-  const sel = window.getSelection().toString().trim();
+  const sel = window.getSelection() ? window.getSelection().toString().trim() : '';
   if (sel) {
-    lastSelectedText = sel;
+    lastUserSelection = sel;
   }
 });
 
 document.addEventListener('mouseup', () => {
-  const sel = window.getSelection().toString().trim();
+  const sel = window.getSelection() ? window.getSelection().toString().trim() : '';
   if (sel) {
-    lastSelectedText = sel;
+    lastUserSelection = sel;
   }
 });
 
-// Extract clean, readable article or webpage text
-function extractCleanPageText() {
-  const currentSel = window.getSelection().toString().trim();
-  const effectiveSelection = currentSel || lastSelectedText;
+// Robust text extractor that doesn't rely on detached DOM innerText
+function getPageExtraction() {
+  const sel = (window.getSelection() ? window.getSelection().toString().trim() : '') || lastUserSelection;
+  
+  // Find main content container if available
+  const container = document.querySelector('article, main, [role=""main""], .mw-parser-output, .article-content, .post-content, #content, #main-content') || document.body;
 
-  // Try to find the most relevant main article container first
-  const mainArticle = document.querySelector('article, main, [role=""main""], .post-content, .article-content, #content');
-  const targetElement = mainArticle ? mainArticle.cloneNode(true) : document.body.cloneNode(true);
+  // Extract from paragraphs and headings
+  const nodes = container.querySelectorAll('h1, h2, h3, h4, p, li, blockquote');
+  let extractedLines = [];
 
-  // Remove noise elements (scripts, styles, ads, nav, footer, sidebars)
-  const selectorsToRemove = [
-    'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
-    'nav', 'footer', 'header', 'aside',
-    '.ad', '.ads', '.advertisement', '.social-share', '.cookie-banner',
-    '#comments', '.comments', '.sidebar', '.menu', '.nav'
-  ];
+  if (nodes && nodes.length >= 3) {
+    nodes.forEach(node => {
+      // Ignore hidden or script/ad nodes
+      if (node.closest('script, style, noscript, nav, footer, header, aside, .ad, .ads, .comments, #comments')) return;
+      const text = node.textContent ? node.textContent.trim() : '';
+      if (text.length > 5) {
+        extractedLines.push(text);
+      }
+    });
+  }
 
-  selectorsToRemove.forEach(sel => {
-    targetElement.querySelectorAll(sel).forEach(el => el.remove());
-  });
+  let fullText = extractedLines.join('\n\n');
 
-  // Extract and normalize text whitespace
-  let text = targetElement.innerText || targetElement.textContent || '';
-  text = text.replace(/\r\n/g, '\n').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+  // Fallback to body textContent if paragraph extraction was too sparse
+  if (!fullText || fullText.length < 100) {
+    fullText = (container.textContent || document.body.textContent || '').replace(/\s+/g, ' ').trim();
+  }
 
-  // Limit to reasonable context size (~12,000 chars)
-  if (text.length > 12000) {
-    text = text.substring(0, 12000) + '\n\n[הטקסט קוצר עקב מגבלת אורך...]';
+  // Trim to 12,000 characters max
+  if (fullText.length > 12000) {
+    fullText = fullText.substring(0, 12000) + '\n\n[הטקסט קוצר עקב מגבלת אורך...]';
   }
 
   return {
-    title: document.title || '',
+    title: document.title || 'עמוד אינטרנט',
     url: window.location.href,
-    text: text,
-    selectedText: effectiveSelection
+    text: fullText,
+    selectedText: sel
   };
 }
 
-// Listen for direct queries from Side Panel or Background
+// Handle messages from Side Panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_PAGE_DATA' || request.action === 'EXTRACT_PAGE_CONTENT' || request.type === 'EXTRACT_PAGE_CONTENT') {
-    const data = extractCleanPageText();
-    sendResponse(data);
+    const res = getPageExtraction();
+    sendResponse(res);
   } else if (request.action === 'GET_SELECTION') {
-    const currentSel = window.getSelection().toString().trim();
-    sendResponse({ selectedText: currentSel || lastSelectedText });
+    const sel = (window.getSelection() ? window.getSelection().toString().trim() : '') || lastUserSelection;
+    sendResponse({ selectedText: sel });
   }
   return true;
 });
