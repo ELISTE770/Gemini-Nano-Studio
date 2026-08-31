@@ -8,56 +8,35 @@
 </head>
 <body>
 
-  <!-- App Header -->
+  <!-- Minimal & Clean App Header -->
   <header class="app-header">
     <div class="brand-section">
       <img src="icons/icon48.png" alt="Gemini Logo" class="brand-logo">
       <div class="brand-title">
         <span>Gemini Nano</span>
-        <span class="badge-version">v0.8.9</span>
       </div>
     </div>
 
     <div class="header-actions">
-      <!-- Status Pill -->
-      <span id="modelStatusPill" class="status-pill" title="מצב Gemini Nano">
-        <span class="status-dot"></span>
-        <span id="modelStatusText">Nano Ready</span>
-      </span>
-
-      <!-- 1. Explicit Refresh Button -->
-      <button id="refreshPanelBtn" class="icon-btn" title="רענן מנוע ובדוק חיבור">
-        <svg id="refreshIconSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-      </button>
-
-      <!-- 5. Theme Toggle Button (Light/Dark) -->
-      <button id="themeToggleBtn" class="icon-btn" title="החלף מצב תצוגה (בהיר / כהה)">
-        <svg id="themeIconSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-
-      <!-- 4. Export Chat Button -->
-      <button id="exportChatBtn" class="icon-btn" title="ייצא שיחה לקובץ Markdown">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-      </button>
-
-      <!-- Switch Language Button -->
-      <button id="langToggleBtn" class="icon-btn" title="החלף שפה (HE/EN)">
-        <span style="font-size: 10.5px; font-weight: 700;">EN</span>
+      <!-- 3. Toggle Site Connection (Linked / Standalone) -->
+      <button id="contextLinkBtn" class="context-pill linked" title="לחץ לכיבוי/הפעלת קישור לתוכן האתר הפעיל">
+        <span id="contextLinkIcon">🔗</span>
+        <span id="contextLinkText">קשור לאתר</span>
       </button>
 
       <!-- New Chat Button -->
       <button id="newChatBtn" class="icon-btn" title="שיחה חדשה">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
 
-      <!-- Open Full Studio Web App -->
-      <button id="openStudioBtn" class="icon-btn" title="פתח סביבת עבודה מלאה">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      <!-- 1. Settings Button -->
+      <button id="openSettingsBtn" class="icon-btn" title="הגדרות התוסף">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- Quick Action Chips (Including Item 6: Quick Prompts / Templates) -->
+  <!-- Clean Quick Action Chips -->
   <div class="quick-tools-bar">
     <button id="toolSummarizePage" class="tool-chip primary" title="סכם את תוכן העמוד הנוכחי">
       <span>📑</span> <span>סכם עמוד</span>
@@ -70,12 +49,6 @@
     </button>
     <button id="toolRewrite" class="tool-chip" title="שכתב ושפר ניסוח">
       <span>✍️</span> <span>שכתב</span>
-    </button>
-    <button id="toolCodeSnippet" class="tool-chip" title="הסבר קוד או כתוב סקריפט">
-      <span>⚡</span> <span>קוד</span>
-    </button>
-    <button id="toolSpellCheck" class="tool-chip" title="בדיקת איות ודקדוק">
-      <span>✔️</span> <span>הגהה</span>
     </button>
   </div>
 
@@ -96,7 +69,7 @@
       
       <div class="input-controls">
         <div style="display: flex; gap: 4px; align-items: center;">
-          <select id="personaSelect" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 10px; border-radius: 6px; padding: 2px 4px; outline: none;">
+          <select id="personaSelect" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 10.5px; border-radius: 6px; padding: 2px 4px; outline: none;">
             <option value="general">🌟 עוזר כללי</option>
             <option value="coding">👨‍💻 מתכנת Senior</option>
             <option value="writer">✍️ עורך לשוני</option>
@@ -104,7 +77,7 @@
             <option value="translator">⚡ מתרגם</option>
           </select>
 
-          <!-- 3. Voice Dictation Button -->
+          <!-- Voice Dictation Button -->
           <button id="voiceBtn" class="icon-btn" title="הכתבה קולית (דיבור לטקסט)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
@@ -122,6 +95,93 @@
       </div>
     </div>
   </footer>
+
+  <!-- 1. Full Featured Settings Modal (הגדרות התוסף) -->
+  <div id="settingsModal" class="modal-backdrop hidden">
+    <div class="settings-card">
+      <div class="settings-header">
+        <div class="settings-title">
+          <span>⚙️</span> <span>הגדרות התוסף</span>
+        </div>
+        <button id="closeSettingsBtn" class="icon-btn" title="סגור">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="settings-body">
+        <!-- 2. Display Mode: Side Panel vs Full Tab vs Popup -->
+        <div class="settings-group">
+          <label class="settings-label">🖥️ אופן פתיחת התוסף</label>
+          <div class="settings-desc">בחר כיצד התוסף ייפתח כברירת מחדל בלחיצה על האייקון:</div>
+          <select id="settingOpenMode" class="settings-select">
+            <option value="sidepanel">סרגל צד (Side Panel)</option>
+            <option value="tab">לשונית מלאה בדפדפן (Full Tab)</option>
+            <option value="popup">חלון צף נפרד (Popup Window)</option>
+          </select>
+          <button id="openFullTabBtn" class="btn-secondary" style="margin-top: 4px;">
+            <span>🚀</span> <span>פתח עכשיו בלשונית מלאה</span>
+          </button>
+        </div>
+
+        <!-- 3. Page Context Link -->
+        <div class="settings-group">
+          <div class="settings-row">
+            <div>
+              <label class="settings-label">🔗 קישור לתוכן האתר הפתוח</label>
+              <div class="settings-desc">צירוף אוטומטי של תוכן העמוד הפעיל לשאלות שלך</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingContextAware" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Appearance & Theme -->
+        <div class="settings-group">
+          <label class="settings-label">🎨 מראה ושפה</label>
+          <div class="settings-row">
+            <div style="flex: 1;">
+              <div class="settings-desc">ערכת נושא:</div>
+              <select id="settingTheme" class="settings-select" style="margin-top: 4px;">
+                <option value="dark">🌙 כהה (Dark)</option>
+                <option value="light">☀️ בהיר (Light)</option>
+              </select>
+            </div>
+            <div style="flex: 1;">
+              <div class="settings-desc">שפת ממשק:</div>
+              <select id="settingLang" class="settings-select" style="margin-top: 4px;">
+                <option value="he">🇮🇱 עברית</option>
+                <option value="en">🇺🇸 English</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data & Export -->
+        <div class="settings-group">
+          <label class="settings-label">💾 ניהול שיחות ונתונים</label>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button id="modalExportBtn" class="btn-secondary" style="flex: 1;">
+              <span>📥</span> <span>ייצא שיחה ל-MD</span>
+            </button>
+            <button id="modalClearBtn" class="btn-secondary" style="flex: 1;">
+              <span>🗑️</span> <span>נקה שיחה</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Diagnostics & Refresh -->
+        <div class="settings-group">
+          <label class="settings-label">🔄 רענון ואבחון</label>
+          <button id="modalRefreshBtn" class="btn-secondary">
+            <svg id="modalRefreshSvg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            <span>רענן מנוע ובדוק חיבורים</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="sidepanel.js"></script>
 </body>

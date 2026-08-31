@@ -1,7 +1,26 @@
 // Gemini Nano Studio Extension - Background Service Worker
 
-// Enable Side Panel opening when extension action icon is clicked
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error(error));
+// Configure extension action click behavior based on saved preference
+chrome.action.onClicked.addListener(async (tab) => {
+  const { open_mode } = await chrome.storage.local.get('open_mode');
+  const mode = open_mode || 'sidepanel';
+
+  if (mode === 'tab') {
+    chrome.tabs.create({ url: 'http://127.0.0.1:8765/gemini_nano_chat.html' });
+  } else if (mode === 'popup') {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('sidepanel.html'),
+      type: 'popup',
+      width: 440,
+      height: 720
+    });
+  } else {
+    // Default: Side Panel
+    if (tab?.windowId) {
+      chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+    }
+  }
+});
 
 // Initialize Context Menus
 chrome.runtime.onInstalled.addListener(() => {
@@ -61,9 +80,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (tab?.windowId) {
     try {
       await chrome.sidePanel.open({ windowId: tab.windowId });
-    } catch (e) {
-      console.warn('Could not open side panel:', e);
-    }
+    } catch (e) {}
   }
 
   // Store pending action for side panel to pick up
@@ -76,7 +93,5 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   };
 
   await chrome.storage.local.set({ pendingAction: payload });
-
-  // Also try broadcasting directly via message if panel is already open
   chrome.runtime.sendMessage(payload).catch(() => {});
 });

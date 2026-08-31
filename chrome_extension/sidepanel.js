@@ -3,6 +3,8 @@
 let currentSession = null;
 let currentLanguage = 'he'; // 'he' or 'en'
 let currentTheme = 'dark';   // 'dark' or 'light'
+let openMode = 'sidepanel';  // 'sidepanel', 'tab', 'popup'
+let isContextLinked = true;  // Linked to active tab content
 let isGenerating = false;
 let abortController = null;
 let conversationHistory = [];
@@ -53,38 +55,87 @@ function setupEventListeners() {
   const sendBtn = document.getElementById('sendBtn');
   const newChatBtn = document.getElementById('newChatBtn');
   const clearChatBtn = document.getElementById('clearChatBtn');
-  const langToggleBtn = document.getElementById('langToggleBtn');
-  const openStudioBtn = document.getElementById('openStudioBtn');
   const personaSelect = document.getElementById('personaSelect');
-  const refreshBtn = document.getElementById('refreshPanelBtn');
-  const themeBtn = document.getElementById('themeToggleBtn');
-  const exportBtn = document.getElementById('exportChatBtn');
   const voiceBtn = document.getElementById('voiceBtn');
+  const contextLinkBtn = document.getElementById('contextLinkBtn');
+
+  // Settings Modal Controls
+  const openSettingsBtn = document.getElementById('openSettingsBtn');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const settingOpenMode = document.getElementById('settingOpenMode');
+  const settingContextAware = document.getElementById('settingContextAware');
+  const settingTheme = document.getElementById('settingTheme');
+  const settingLang = document.getElementById('settingLang');
+  const openFullTabBtn = document.getElementById('openFullTabBtn');
+  const modalExportBtn = document.getElementById('modalExportBtn');
+  const modalClearBtn = document.getElementById('modalClearBtn');
+  const modalRefreshBtn = document.getElementById('modalRefreshBtn');
 
   // Quick tool chips
   document.getElementById('toolSummarizePage').addEventListener('click', handleSummarizePage);
   document.getElementById('toolExplainSelection').addEventListener('click', handleExplainSelection);
   document.getElementById('toolTranslate').addEventListener('click', handleTranslateSelection);
   document.getElementById('toolRewrite').addEventListener('click', handleRewriteSelection);
-  document.getElementById('toolCodeSnippet').addEventListener('click', handleCodeSnippet);
-  document.getElementById('toolSpellCheck').addEventListener('click', handleSpellCheck);
 
-  // 1. Refresh Button Click
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', handleRefresh);
+  // 3. Toggle Context Link Button (Pill in header)
+  if (contextLinkBtn) {
+    contextLinkBtn.addEventListener('click', toggleContextLink);
   }
 
-  // 5. Theme Toggle Click
-  if (themeBtn) {
-    themeBtn.addEventListener('click', toggleTheme);
+  // 1. Settings Modal Handlers
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+  }
+  if (closeSettingsBtn) {
+    closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  }
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) settingsModal.classList.add('hidden');
+    });
   }
 
-  // 4. Export Chat Click
-  if (exportBtn) {
-    exportBtn.addEventListener('click', exportChatHistory);
+  // 2. Open Mode Setting
+  if (settingOpenMode) {
+    settingOpenMode.addEventListener('change', (e) => {
+      openMode = e.target.value;
+      chrome.storage.local.set({ open_mode: openMode });
+      showToast(currentLanguage === 'en' ? 'Open mode saved' : 'אופן הפתיחה נשמר');
+    });
   }
 
-  // 3. Voice Dictation Click
+  if (openFullTabBtn) {
+    openFullTabBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'http://127.0.0.1:8765/gemini_nano_chat.html' });
+    });
+  }
+
+  if (settingContextAware) {
+    settingContextAware.addEventListener('change', (e) => {
+      setContextLink(e.target.checked);
+    });
+  }
+
+  if (settingTheme) {
+    settingTheme.addEventListener('change', (e) => {
+      currentTheme = e.target.value;
+      applyTheme(currentTheme);
+      chrome.storage.local.set({ sidepanel_theme: currentTheme });
+    });
+  }
+
+  if (settingLang) {
+    settingLang.addEventListener('change', (e) => {
+      setLanguage(e.target.value);
+    });
+  }
+
+  if (modalExportBtn) modalExportBtn.addEventListener('click', exportChatHistory);
+  if (modalClearBtn) modalClearBtn.addEventListener('click', startNewChat);
+  if (modalRefreshBtn) modalRefreshBtn.addEventListener('click', handleRefresh);
+
+  // Voice Dictation Click
   if (voiceBtn) {
     voiceBtn.addEventListener('click', toggleVoiceDictation);
   }
@@ -112,11 +163,6 @@ function setupEventListeners() {
 
   newChatBtn.addEventListener('click', startNewChat);
   clearChatBtn.addEventListener('click', startNewChat);
-  langToggleBtn.addEventListener('click', toggleLanguage);
-  
-  openStudioBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'http://127.0.0.1:8765/gemini_nano_chat.html' });
-  });
 
   personaSelect.addEventListener('change', () => {
     destroySession();
@@ -130,9 +176,44 @@ function setupEventListeners() {
   });
 }
 
-// 1. Handle Refresh Action
+// 3. Toggle Context Link (Linked vs Standalone)
+function toggleContextLink() {
+  setContextLink(!isContextLinked);
+}
+
+function setContextLink(enabled) {
+  isContextLinked = enabled;
+  chrome.storage.local.set({ sidepanel_context_linked: isContextLinked });
+
+  const btn = document.getElementById('contextLinkBtn');
+  const icon = document.getElementById('contextLinkIcon');
+  const text = document.getElementById('contextLinkText');
+  const chk = document.getElementById('settingContextAware');
+
+  if (chk) chk.checked = isContextLinked;
+
+  if (isContextLinked) {
+    if (btn) {
+      btn.className = 'context-pill linked';
+      btn.title = 'מחובר לאתר הפתוח: מידע מהעמוד ישמש כהקשר לתשובות';
+    }
+    if (icon) icon.textContent = '🔗';
+    if (text) text.textContent = currentLanguage === 'en' ? 'Linked' : 'קשור לאתר';
+    showToast(currentLanguage === 'en' ? 'Context linked to active page' : 'התוסף קשור לתוכן האתר הפעיל');
+  } else {
+    if (btn) {
+      btn.className = 'context-pill standalone';
+      btn.title = 'מצב עצמאי: שאלות כלליות ללא תלות באתר הפתוח';
+    }
+    if (icon) icon.textContent = '⚡';
+    if (text) text.textContent = currentLanguage === 'en' ? 'Standalone' : 'עצמאי';
+    showToast(currentLanguage === 'en' ? 'Standalone mode (no page context)' : 'מצב עצמאי ללא הקשר מהאתר');
+  }
+}
+
+// Handle Refresh Action
 function handleRefresh() {
-  const icon = document.getElementById('refreshIconSvg');
+  const icon = document.getElementById('modalRefreshSvg');
   if (icon) icon.classList.add('rotating');
 
   destroySession();
@@ -144,30 +225,39 @@ function handleRefresh() {
   }, 600);
 }
 
-// 5. Theme Switcher (Dark / Light)
-function toggleTheme() {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  applyTheme(currentTheme);
-  chrome.storage.local.set({ sidepanel_theme: currentTheme });
-  showToast(currentTheme === 'light' ? 'מצב תצוגה בהיר' : 'מצב תצוגה כהה');
-}
-
+// Theme Switcher (Dark / Light)
 function applyTheme(theme) {
-  const themeSvg = document.getElementById('themeIconSvg');
   if (theme === 'light') {
     document.body.classList.add('theme-light');
-    if (themeSvg) {
-      themeSvg.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-    }
   } else {
     document.body.classList.remove('theme-light');
-    if (themeSvg) {
-      themeSvg.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-    }
   }
+  const sel = document.getElementById('settingTheme');
+  if (sel) sel.value = theme;
 }
 
-// 4. Export Chat History to Markdown (.md)
+// Language Switcher
+function setLanguage(lang) {
+  currentLanguage = lang;
+  document.documentElement.setAttribute('dir', currentLanguage === 'he' ? 'rtl' : 'ltr');
+  document.documentElement.setAttribute('lang', currentLanguage);
+
+  const input = document.getElementById('userInput');
+  if (input) {
+    input.placeholder = currentLanguage === 'en' 
+      ? 'Ask Gemini Nano or summarize this page...' 
+      : 'שאל את Gemini Nano או סכם את העמוד...';
+  }
+
+  const sel = document.getElementById('settingLang');
+  if (sel) sel.value = currentLanguage;
+
+  setContextLink(isContextLinked);
+  chrome.storage.local.set({ sidepanel_lang: currentLanguage });
+  destroySession();
+}
+
+// Export Chat History to Markdown (.md)
 function exportChatHistory() {
   if (!conversationHistory || conversationHistory.length === 0) {
     showToast(currentLanguage === 'en' ? 'No messages to export' : 'אין הודעות לייצוא בשיחה זו');
@@ -191,7 +281,7 @@ function exportChatHistory() {
   showToast(currentLanguage === 'en' ? 'Chat exported successfully!' : 'השיחה יוצאה בהצלחה כקובץ MD!');
 }
 
-// 3. Voice Dictation (Web Speech API)
+// Voice Dictation (Web Speech API)
 function toggleVoiceDictation() {
   const voiceBtn = document.getElementById('voiceBtn');
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -262,14 +352,7 @@ function getLocalAIEngine() {
 }
 
 function initEngineStatus() {
-  const statusText = document.getElementById('modelStatusText');
-  const statusPill = document.getElementById('modelStatusPill');
-  if (statusText) statusText.textContent = 'Nano Ready';
-  if (statusPill) {
-    statusPill.style.background = 'rgba(16, 185, 129, 0.15)';
-    statusPill.style.color = '#34d399';
-    statusPill.title = 'מנוע Gemini Nano זמין ומוכן לקבל שאלות וסיכומי עמודים';
-  }
+  // Always ready
 }
 
 // Create or get active AI session
@@ -386,9 +469,9 @@ async function executeNanoPrompt(promptText, onChunk) {
 }
 
 // Send user message and stream assistant response
-async function sendMessage(overrideText = null) {
+async function sendMessage(overrideText = null, isDirectAction = false) {
   const input = document.getElementById('userInput');
-  const text = (overrideText || input.value).trim();
+  let text = (overrideText || input.value).trim();
   if (!text || isGenerating) return;
 
   if (!overrideText) {
@@ -411,10 +494,36 @@ async function sendMessage(overrideText = null) {
   setGeneratingState(true);
   abortController = new AbortController();
 
+  let finalPrompt = text;
+
+  // 3. Inject active tab context if Linked Mode is enabled (and not already an explicit tool action)
+  if (isContextLinked && !isDirectAction && !overrideText) {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.id && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+        const pageData = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const clone = document.body.cloneNode(true);
+            ['script', 'style', 'nav', 'footer', 'aside'].forEach(s => clone.querySelectorAll(s).forEach(e => e.remove()));
+            const snippet = (clone.innerText || '').replace(/\s+/g, ' ').trim().substring(0, 2500);
+            return { title: document.title, url: window.location.href, snippet };
+          }
+        });
+        if (pageData && pageData[0] && pageData[0].result) {
+          const { title, url, snippet } = pageData[0].result;
+          if (snippet) {
+            finalPrompt = `[הקשר מהאתר הפתוח "${title}" (${url})]:\n${snippet}\n\n[שאלת המשתמש]:\n${text}`;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
   let accumulatedText = '';
 
   try {
-    accumulatedText = await executeNanoPrompt(text, (chunk) => {
+    accumulatedText = await executeNanoPrompt(finalPrompt, (chunk) => {
       accumulatedText = chunk;
       contentElem.innerHTML = renderMarkdown(accumulatedText);
       attachCodeCopyListeners(contentElem);
@@ -460,7 +569,7 @@ function stopGeneration() {
   }
 }
 
-// 2. Append message bubble to chat feed with Copy button
+// Append message bubble to chat feed with Copy button
 function appendMessage(role, content, isLive = false) {
   const feed = document.getElementById('chatFeed');
   const row = document.createElement('div');
@@ -486,7 +595,6 @@ function appendMessage(role, content, isLive = false) {
   row.appendChild(header);
   row.appendChild(bubble);
 
-  // 2. Copy entire response button for AI responses
   if (role === 'ai') {
     const actions = document.createElement('div');
     actions.className = 'msg-actions';
@@ -517,7 +625,7 @@ function appendMessage(role, content, isLive = false) {
   return row;
 }
 
-// 2. Attach Copy Button to individual code blocks
+// Attach Copy Button to individual code blocks
 function attachCodeCopyListeners(container) {
   container.querySelectorAll('.code-copy-btn').forEach(btn => {
     if (!btn.dataset.hasListener) {
@@ -565,12 +673,12 @@ function startNewChat() {
   `;
 }
 
-// Page Context Actions & 6. Quick Prompts
+// Page Context Actions
 async function handleSummarizePage() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('סכם את העמוד הנוכחי');
+      sendMessage('סכם את העמוד הנוכחי', true);
       return;
     }
 
@@ -589,10 +697,10 @@ async function handleSummarizePage() {
     if (results && results[0] && results[0].result) {
       const { title, text, url } = results[0].result;
       const prompt = `[סכם את תוכן העמוד הבא בצורה תמציתית ומובנית, עם כותרת, 3-5 נקודות מפתח ומסקנה]\n\nכותרת: ${title}\nקישור: ${url}\n\nתוכן המאמר:\n${text}`;
-      sendMessage(prompt);
+      sendMessage(prompt, true);
     }
   } catch (e) {
-    sendMessage('סכם את העמוד הנוכחי');
+    sendMessage('סכם את העמוד הנוכחי', true);
   }
 }
 
@@ -600,7 +708,7 @@ async function handleExplainSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('הסבר את המושג או הטקסט שסימנתי');
+      sendMessage('הסבר את המושג או הטקסט שסימנתי', true);
       return;
     }
 
@@ -611,12 +719,12 @@ async function handleExplainSelection() {
 
     const selectedText = results?.[0]?.result?.trim();
     if (selectedText) {
-      sendMessage(`[הסבר בצורה ברורה ומעמיקה את הקטע הבא]:\n\n"${selectedText}"`);
+      sendMessage(`[הסבר בצורה ברורה ומעמיקה את הקטע הבא]:\n\n"${selectedText}"`, true);
     } else {
-      sendMessage('הסבר את המושג או הטקסט שסימנתי בדפדפן');
+      sendMessage('הסבר את המושג או הטקסט שסימנתי בדפדפן', true);
     }
   } catch (e) {
-    sendMessage('הסבר את הטקסט המסומן');
+    sendMessage('הסבר את הטקסט המסומן', true);
   }
 }
 
@@ -624,7 +732,7 @@ async function handleTranslateSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('תרגם את הטקסט המסומן לעברית');
+      sendMessage('תרגם את הטקסט המסומן לעברית', true);
       return;
     }
 
@@ -635,9 +743,9 @@ async function handleTranslateSelection() {
 
     const selectedText = results?.[0]?.result?.trim();
     if (selectedText) {
-      sendMessage(`[תרגם את הטקסט הבא לעברית בצורה רהוטה וטבעית]:\n\n"${selectedText}"`);
+      sendMessage(`[תרגם את הטקסט הבא לעברית בצורה רהוטה וטבעית]:\n\n"${selectedText}"`, true);
     } else {
-      sendMessage('תרגם את הטקסט המסומן לעברית');
+      sendMessage('תרגם את הטקסט המסומן לעברית', true);
     }
   } catch (e) {}
 }
@@ -646,7 +754,7 @@ async function handleRewriteSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('שכתב ושפר את הטקסט המסומן');
+      sendMessage('שכתב ושפר את הטקסט המסומן', true);
       return;
     }
 
@@ -657,50 +765,9 @@ async function handleRewriteSelection() {
 
     const selectedText = results?.[0]?.result?.trim();
     if (selectedText) {
-      sendMessage(`[שכתב את הטקסט הבא במשלב מקצועי, ברור ומשכנע]:\n\n"${selectedText}"`);
+      sendMessage(`[שכתב את הטקסט הבא במשלב מקצועי, ברור ומשכנע]:\n\n"${selectedText}"`, true);
     } else {
-      sendMessage('שכתב ושפר את הטקסט המסומן');
-    }
-  } catch (e) {}
-}
-
-// 6. Quick Prompt Presets
-async function handleCodeSnippet() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    let selected = '';
-    if (tab && tab.id && !tab.url.startsWith('chrome://')) {
-      const res = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => window.getSelection().toString()
-      });
-      selected = res?.[0]?.result?.trim() || '';
-    }
-    if (selected) {
-      sendMessage(`[נתח את קטע הקוד הבא, הסבר מה הוא עושה והצע שיפורים או תיקוני באגים]:\n\`\`\`\n${selected}\n\`\`\``);
-    } else {
-      sendMessage('כתוב פונקציה נקייה ומודרנית עבור המשימה הבאה:');
-    }
-  } catch (e) {
-    sendMessage('הסבר את קטע הקוד שסימנתי');
-  }
-}
-
-async function handleSpellCheck() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    let selected = '';
-    if (tab && tab.id && !tab.url.startsWith('chrome://')) {
-      const res = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => window.getSelection().toString()
-      });
-      selected = res?.[0]?.result?.trim() || '';
-    }
-    if (selected) {
-      sendMessage(`[בדוק שגיאות כתיב, פיסוק ודקדוק בקטע הבא והחזר גרסה מתוקנת ומלוטשת]:\n\n"${selected}"`);
-    } else {
-      sendMessage('בדוק שגיאות כתיב והגהה בטקסט הבא:');
+      sendMessage('שכתב ושפר את הטקסט המסומן', true);
     }
   } catch (e) {}
 }
@@ -717,49 +784,40 @@ async function checkPendingAction() {
 function handleIncomingAction(data) {
   const { action, selectionText } = data;
   if (action === 'explain_selection' && selectionText) {
-    sendMessage(`[הסבר בצורה ברורה את הקטע הבא]:\n\n"${selectionText}"`);
+    sendMessage(`[הסבר בצורה ברורה את הקטע הבא]:\n\n"${selectionText}"`, true);
   } else if (action === 'summarize_selection' && selectionText) {
-    sendMessage(`[סכם את הקטע הבא בנקודות מרכזיות]:\n\n"${selectionText}"`);
+    sendMessage(`[סכם את הקטע הבא בנקודות מרכזיות]:\n\n"${selectionText}"`, true);
   } else if (action === 'translate_hebrew' && selectionText) {
-    sendMessage(`[תרגם לעברית בצורה שוטפת ואיכותית]:\n\n"${selectionText}"`);
+    sendMessage(`[תרגם לעברית בצורה שוטפת ואיכותית]:\n\n"${selectionText}"`, true);
   } else if (action === 'rewrite_text' && selectionText) {
-    sendMessage(`[שכתב ושפר את הניסוח של הטקסט הבא]:\n\n"${selectionText}"`);
+    sendMessage(`[שכתב ושפר את הניסוח של הטקסט הבא]:\n\n"${selectionText}"`, true);
   } else if (action === 'summarize_page') {
     handleSummarizePage();
   }
 }
 
-// Language toggle (Hebrew / English)
-function toggleLanguage() {
-  currentLanguage = currentLanguage === 'he' ? 'en' : 'he';
-  document.documentElement.setAttribute('dir', currentLanguage === 'he' ? 'rtl' : 'ltr');
-  document.documentElement.setAttribute('lang', currentLanguage);
-
-  const langBtn = document.getElementById('langToggleBtn');
-  langBtn.querySelector('span').textContent = currentLanguage === 'he' ? 'EN' : 'עב';
-
-  const input = document.getElementById('userInput');
-  input.placeholder = currentLanguage === 'en' 
-    ? 'Ask Gemini Nano or summarize this page...' 
-    : 'שאל את Gemini Nano או סכם את העמוד...';
-
-  chrome.storage.local.set({ sidepanel_lang: currentLanguage });
-  destroySession();
-}
-
 async function loadSavedSettings() {
-  const { sidepanel_lang, sidepanel_history, sidepanel_active_chat_id, sidepanel_theme } = await chrome.storage.local.get(['sidepanel_lang', 'sidepanel_history', 'sidepanel_active_chat_id', 'sidepanel_theme']);
+  const { sidepanel_lang, sidepanel_history, sidepanel_active_chat_id, sidepanel_theme, sidepanel_context_linked, open_mode } = await chrome.storage.local.get(['sidepanel_lang', 'sidepanel_history', 'sidepanel_active_chat_id', 'sidepanel_theme', 'sidepanel_context_linked', 'open_mode']);
   
+  if (open_mode) {
+    openMode = open_mode;
+    const sel = document.getElementById('settingOpenMode');
+    if (sel) sel.value = openMode;
+  }
+
+  if (sidepanel_context_linked !== undefined) {
+    setContextLink(sidepanel_context_linked);
+  } else {
+    setContextLink(true);
+  }
+
   if (sidepanel_theme) {
     currentTheme = sidepanel_theme;
     applyTheme(currentTheme);
   }
 
   if (sidepanel_lang) {
-    currentLanguage = sidepanel_lang;
-    document.documentElement.setAttribute('dir', currentLanguage === 'he' ? 'rtl' : 'ltr');
-    document.documentElement.setAttribute('lang', currentLanguage);
-    document.getElementById('langToggleBtn').querySelector('span').textContent = currentLanguage === 'he' ? 'EN' : 'עב';
+    setLanguage(sidepanel_lang);
   }
 
   if (sidepanel_active_chat_id) {
@@ -784,7 +842,6 @@ function saveConversationHistory() {
     sidepanel_active_chat_id: activeChatId
   });
 
-  // Sync to shared global storage schema
   const sharedConversation = {
     id: activeChatId,
     title: conversationHistory[0]?.content ? conversationHistory[0].content.substring(0, 30) : 'שיחת סרגל צד (Extension)',
@@ -816,7 +873,7 @@ function showToast(msg) {
   setTimeout(() => toast.remove(), 2200);
 }
 
-// 2. Lightweight Markdown Formatter with Code Box & Copy button support
+// Lightweight Markdown Formatter with Code Box & Copy button support
 function renderMarkdown(md) {
   if (!md) return '';
   let html = md
@@ -824,7 +881,6 @@ function renderMarkdown(md) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Code blocks with header & copy button
   html = html.replace(/```([a-z0-9]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
     const langLabel = lang || 'code';
     return `<div class="code-block-wrapper">
@@ -836,26 +892,15 @@ function renderMarkdown(md) {
     </div>`;
   });
 
-  // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Headers
   html = html.replace(/^### (.*$)/gim, '<h4>$1</h4>');
   html = html.replace(/^## (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^# (.*$)/gim, '<h2>$1</h2>');
-
-  // Bold / Italic
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-  // Bullet Lists
   html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>)/gims, '<ul>$1</ul>');
-
-  // Blockquotes
   html = html.replace(/^>\s+(.*$)/gim, '<blockquote style="border-right: 3px solid #3b82f6; padding-right: 8px; color: #94a3b8;">$1</blockquote>');
-
-  // Line breaks
   html = html.replace(/\n\n/g, '<p></p>');
   html = html.replace(/\n/g, '<br>');
 
