@@ -2,10 +2,14 @@
 
 let currentSession = null;
 let currentLanguage = 'he'; // 'he' or 'en'
+let currentTheme = 'dark';   // 'dark' or 'light'
 let isGenerating = false;
 let abortController = null;
 let conversationHistory = [];
 let activeChatId = 'chat_ext_' + Date.now();
+
+let speechRecognition = null;
+let isRecordingVoice = false;
 
 const PERSONAS = {
   general: {
@@ -52,20 +56,37 @@ function setupEventListeners() {
   const langToggleBtn = document.getElementById('langToggleBtn');
   const openStudioBtn = document.getElementById('openStudioBtn');
   const personaSelect = document.getElementById('personaSelect');
-  const statusPill = document.getElementById('modelStatusPill');
+  const refreshBtn = document.getElementById('refreshPanelBtn');
+  const themeBtn = document.getElementById('themeToggleBtn');
+  const exportBtn = document.getElementById('exportChatBtn');
+  const voiceBtn = document.getElementById('voiceBtn');
 
   // Quick tool chips
   document.getElementById('toolSummarizePage').addEventListener('click', handleSummarizePage);
   document.getElementById('toolExplainSelection').addEventListener('click', handleExplainSelection);
   document.getElementById('toolTranslate').addEventListener('click', handleTranslateSelection);
   document.getElementById('toolRewrite').addEventListener('click', handleRewriteSelection);
+  document.getElementById('toolCodeSnippet').addEventListener('click', handleCodeSnippet);
+  document.getElementById('toolSpellCheck').addEventListener('click', handleSpellCheck);
 
-  // Click on status pill to toggle / verify
-  if (statusPill) {
-    statusPill.style.cursor = 'pointer';
-    statusPill.addEventListener('click', () => {
-      initEngineStatus();
-    });
+  // 1. Refresh Button Click
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', handleRefresh);
+  }
+
+  // 5. Theme Toggle Click
+  if (themeBtn) {
+    themeBtn.addEventListener('click', toggleTheme);
+  }
+
+  // 4. Export Chat Click
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportChatHistory);
+  }
+
+  // 3. Voice Dictation Click
+  if (voiceBtn) {
+    voiceBtn.addEventListener('click', toggleVoiceDictation);
   }
 
   // Send message events
@@ -107,6 +128,123 @@ function setupEventListeners() {
       handleIncomingAction(request);
     }
   });
+}
+
+// 1. Handle Refresh Action
+function handleRefresh() {
+  const icon = document.getElementById('refreshIconSvg');
+  if (icon) icon.classList.add('rotating');
+
+  destroySession();
+  initEngineStatus();
+
+  setTimeout(() => {
+    if (icon) icon.classList.remove('rotating');
+    showToast(currentLanguage === 'en' ? 'Refreshed & Ready!' : 'המערכת רועננה בהצלחה!');
+  }, 600);
+}
+
+// 5. Theme Switcher (Dark / Light)
+function toggleTheme() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(currentTheme);
+  chrome.storage.local.set({ sidepanel_theme: currentTheme });
+  showToast(currentTheme === 'light' ? 'מצב תצוגה בהיר' : 'מצב תצוגה כהה');
+}
+
+function applyTheme(theme) {
+  const themeSvg = document.getElementById('themeIconSvg');
+  if (theme === 'light') {
+    document.body.classList.add('theme-light');
+    if (themeSvg) {
+      themeSvg.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    }
+  } else {
+    document.body.classList.remove('theme-light');
+    if (themeSvg) {
+      themeSvg.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    }
+  }
+}
+
+// 4. Export Chat History to Markdown (.md)
+function exportChatHistory() {
+  if (!conversationHistory || conversationHistory.length === 0) {
+    showToast(currentLanguage === 'en' ? 'No messages to export' : 'אין הודעות לייצוא בשיחה זו');
+    return;
+  }
+
+  let mdContent = `# 💬 שיחת Gemini Nano Studio\n*תאריך: ${new Date().toLocaleString()}*\n\n---\n\n`;
+  conversationHistory.forEach(msg => {
+    const roleName = msg.role === 'user' ? '🧑 **משתמש**' : '✨ **Gemini Nano**';
+    mdContent += `### ${roleName}:\n${msg.content}\n\n`;
+  });
+
+  const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Gemini_Nano_Chat_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  showToast(currentLanguage === 'en' ? 'Chat exported successfully!' : 'השיחה יוצאה בהצלחה כקובץ MD!');
+}
+
+// 3. Voice Dictation (Web Speech API)
+function toggleVoiceDictation() {
+  const voiceBtn = document.getElementById('voiceBtn');
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRec) {
+    showToast(currentLanguage === 'en' ? 'Voice input is not supported in this browser' : 'זיהוי קולי אינו נתמך בדפדפן זה');
+    return;
+  }
+
+  if (isRecordingVoice) {
+    if (speechRecognition) speechRecognition.stop();
+    isRecordingVoice = false;
+    voiceBtn.classList.remove('recording');
+    return;
+  }
+
+  try {
+    speechRecognition = new SpeechRec();
+    speechRecognition.lang = currentLanguage === 'en' ? 'en-US' : 'he-IL';
+    speechRecognition.interimResults = true;
+    speechRecognition.continuous = false;
+
+    speechRecognition.onstart = () => {
+      isRecordingVoice = true;
+      voiceBtn.classList.add('recording');
+      showToast(currentLanguage === 'en' ? 'Listening...' : 'מקשיב... דבר כעת');
+    };
+
+    speechRecognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join('');
+      const input = document.getElementById('userInput');
+      input.value = transcript;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    };
+
+    speechRecognition.onerror = () => {
+      isRecordingVoice = false;
+      voiceBtn.classList.remove('recording');
+    };
+
+    speechRecognition.onend = () => {
+      isRecordingVoice = false;
+      voiceBtn.classList.remove('recording');
+    };
+
+    speechRecognition.start();
+  } catch (e) {
+    isRecordingVoice = false;
+    voiceBtn.classList.remove('recording');
+  }
 }
 
 // Universal AI Engine Locator
@@ -279,6 +417,7 @@ async function sendMessage(overrideText = null) {
     accumulatedText = await executeNanoPrompt(text, (chunk) => {
       accumulatedText = chunk;
       contentElem.innerHTML = renderMarkdown(accumulatedText);
+      attachCodeCopyListeners(contentElem);
       scrollChatToBottom();
     });
 
@@ -292,6 +431,7 @@ async function sendMessage(overrideText = null) {
       accumulatedText = '⚠️ ' + (err.message || String(err));
     }
     contentElem.innerHTML = renderMarkdown(accumulatedText);
+    attachCodeCopyListeners(contentElem);
   } finally {
     setGeneratingState(false);
     contentElem.classList.remove('typing-cursor');
@@ -320,15 +460,19 @@ function stopGeneration() {
   }
 }
 
-// Append message bubble to chat feed
+// 2. Append message bubble to chat feed with Copy button
 function appendMessage(role, content, isLive = false) {
   const feed = document.getElementById('chatFeed');
   const row = document.createElement('div');
   row.className = 'message-row ' + role;
 
+  const header = document.createElement('div');
+  header.className = 'msg-header';
+
   const avatar = document.createElement('div');
   avatar.className = 'msg-avatar ' + role;
   avatar.textContent = role === 'user' ? '🧑' : '✨';
+  header.appendChild(avatar);
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
@@ -337,15 +481,65 @@ function appendMessage(role, content, isLive = false) {
   contentDiv.className = 'msg-content';
   if (isLive) contentDiv.classList.add('typing-cursor');
   contentDiv.innerHTML = renderMarkdown(content);
-
   bubble.appendChild(contentDiv);
-  row.appendChild(avatar);
+
+  row.appendChild(header);
   row.appendChild(bubble);
 
+  // 2. Copy entire response button for AI responses
+  if (role === 'ai') {
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-action-btn';
+    copyBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> <span>העתק</span>';
+    copyBtn.title = 'העתק תשובה מלאה';
+
+    copyBtn.addEventListener('click', () => {
+      const plainText = contentDiv.innerText || contentDiv.textContent;
+      navigator.clipboard.writeText(plainText).then(() => {
+        copyBtn.innerHTML = '<span style="color: #10b981;">✓ הועתק!</span>';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> <span>העתק</span>';
+        }, 1500);
+      });
+    });
+
+    actions.appendChild(copyBtn);
+    row.appendChild(actions);
+  }
+
+  attachCodeCopyListeners(contentDiv);
   feed.appendChild(row);
   scrollChatToBottom();
 
   return row;
+}
+
+// 2. Attach Copy Button to individual code blocks
+function attachCodeCopyListeners(container) {
+  container.querySelectorAll('.code-copy-btn').forEach(btn => {
+    if (!btn.dataset.hasListener) {
+      btn.dataset.hasListener = 'true';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wrapper = btn.closest('.code-block-wrapper');
+        const codeElem = wrapper ? wrapper.querySelector('pre code') : null;
+        if (codeElem) {
+          navigator.clipboard.writeText(codeElem.innerText).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = '✓ הועתק';
+            btn.style.color = '#34d399';
+            setTimeout(() => {
+              btn.textContent = orig;
+              btn.style.color = '';
+            }, 1500);
+          });
+        }
+      });
+    }
+  });
 }
 
 function scrollChatToBottom() {
@@ -360,7 +554,7 @@ function startNewChat() {
   chrome.storage.local.remove('sidepanel_history');
 
   const feed = document.getElementById('chatFeed');
-  const title = currentLanguage === 'en' ? 'Gemini Nano in Browser' : 'Gemini Nano בתוך הדפדפן';
+  const title = currentLanguage === 'en' ? 'Gemini Nano in Browser' : 'Gemini Nano בסרגל הצד';
   const desc = currentLanguage === 'en' ? '100% private, on-device AI assistant. Summarize pages, explain code, and chat.' : 'עוזר בינה מלאכותית מקומי ופרטי ב-100%. שאל שאלות, סכם עמודים ותרגם טקסטים ללא צורך בענן.';
   feed.innerHTML = `
     <div id="emptyState" class="empty-state">
@@ -371,7 +565,7 @@ function startNewChat() {
   `;
 }
 
-// Page Context Actions
+// Page Context Actions & 6. Quick Prompts
 async function handleSummarizePage() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -470,6 +664,47 @@ async function handleRewriteSelection() {
   } catch (e) {}
 }
 
+// 6. Quick Prompt Presets
+async function handleCodeSnippet() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let selected = '';
+    if (tab && tab.id && !tab.url.startsWith('chrome://')) {
+      const res = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.getSelection().toString()
+      });
+      selected = res?.[0]?.result?.trim() || '';
+    }
+    if (selected) {
+      sendMessage(`[נתח את קטע הקוד הבא, הסבר מה הוא עושה והצע שיפורים או תיקוני באגים]:\n\`\`\`\n${selected}\n\`\`\``);
+    } else {
+      sendMessage('כתוב פונקציה נקייה ומודרנית עבור המשימה הבאה:');
+    }
+  } catch (e) {
+    sendMessage('הסבר את קטע הקוד שסימנתי');
+  }
+}
+
+async function handleSpellCheck() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let selected = '';
+    if (tab && tab.id && !tab.url.startsWith('chrome://')) {
+      const res = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.getSelection().toString()
+      });
+      selected = res?.[0]?.result?.trim() || '';
+    }
+    if (selected) {
+      sendMessage(`[בדוק שגיאות כתיב, פיסוק ודקדוק בקטע הבא והחזר גרסה מתוקנת ומלוטשת]:\n\n"${selected}"`);
+    } else {
+      sendMessage('בדוק שגיאות כתיב והגהה בטקסט הבא:');
+    }
+  } catch (e) {}
+}
+
 // Handle Context Menu triggers
 async function checkPendingAction() {
   const { pendingAction } = await chrome.storage.local.get('pendingAction');
@@ -480,7 +715,7 @@ async function checkPendingAction() {
 }
 
 function handleIncomingAction(data) {
-  const { action, selectionText, pageTitle } = data;
+  const { action, selectionText } = data;
   if (action === 'explain_selection' && selectionText) {
     sendMessage(`[הסבר בצורה ברורה את הקטע הבא]:\n\n"${selectionText}"`);
   } else if (action === 'summarize_selection' && selectionText) {
@@ -513,7 +748,13 @@ function toggleLanguage() {
 }
 
 async function loadSavedSettings() {
-  const { sidepanel_lang, sidepanel_history, sidepanel_active_chat_id } = await chrome.storage.local.get(['sidepanel_lang', 'sidepanel_history', 'sidepanel_active_chat_id']);
+  const { sidepanel_lang, sidepanel_history, sidepanel_active_chat_id, sidepanel_theme } = await chrome.storage.local.get(['sidepanel_lang', 'sidepanel_history', 'sidepanel_active_chat_id', 'sidepanel_theme']);
+  
+  if (sidepanel_theme) {
+    currentTheme = sidepanel_theme;
+    applyTheme(currentTheme);
+  }
+
   if (sidepanel_lang) {
     currentLanguage = sidepanel_lang;
     document.documentElement.setAttribute('dir', currentLanguage === 'he' ? 'rtl' : 'ltr');
@@ -564,7 +805,18 @@ function saveConversationHistory() {
   });
 }
 
-// Lightweight Markdown Formatter for Extension Context (Safe & Offline)
+function showToast(msg) {
+  const old = document.querySelector('.toast-msg');
+  if (old) old.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
+}
+
+// 2. Lightweight Markdown Formatter with Code Box & Copy button support
 function renderMarkdown(md) {
   if (!md) return '';
   let html = md
@@ -572,9 +824,16 @@ function renderMarkdown(md) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Code blocks
+  // Code blocks with header & copy button
   html = html.replace(/```([a-z0-9]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
-    return '<pre><code>' + code.trim() + '</code></pre>';
+    const langLabel = lang || 'code';
+    return `<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span>${langLabel}</span>
+        <button class="code-copy-btn">העתק קוד</button>
+      </div>
+      <pre><code>${code.trim()}</code></pre>
+    </div>`;
   });
 
   // Inline code
