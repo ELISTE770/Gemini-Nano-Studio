@@ -193,7 +193,11 @@ function setupEventListeners() {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (isGenerating) {
+        stopGeneration();
+      } else {
+        sendMessage();
+      }
     }
   });
 
@@ -528,6 +532,7 @@ function handleRefresh() {
   const icon = document.getElementById('modalRefreshSvg');
   if (icon) icon.classList.add('rotating');
 
+  stopGeneration();
   destroySession();
   initEngineStatus();
 
@@ -711,6 +716,10 @@ function destroySession() {
 
 // Master AI Execution (Extension context -> Active tab execution -> Local server fallback)
 async function executeNanoPrompt(promptText, onChunk) {
+  if (abortController?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
   const selectedPersona = document.getElementById('personaSelect').value || 'general';
   const systemPrompt = PERSONAS[selectedPersona].prompt;
 
@@ -719,9 +728,12 @@ async function executeNanoPrompt(promptText, onChunk) {
     const session = await getOrCreateSession(systemPrompt);
     if (session) {
       if (typeof session.promptStreaming === 'function') {
-        const stream = session.promptStreaming(promptText, { signal: abortController.signal });
+        const stream = session.promptStreaming(promptText, { signal: abortController?.signal });
         let accumulated = '';
         for await (const chunk of stream) {
+          if (abortController?.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+          }
           if (chunk.startsWith(accumulated)) {
             accumulated = chunk;
           } else {
@@ -731,14 +743,21 @@ async function executeNanoPrompt(promptText, onChunk) {
         }
         return accumulated;
       } else if (typeof session.prompt === 'function') {
-        const res = await session.prompt(promptText, { signal: abortController.signal });
+        const res = await session.prompt(promptText, { signal: abortController?.signal });
         onChunk(res);
         return res;
       }
     }
   } catch (err) {
+    if (err.name === 'AbortError' || abortController?.signal?.aborted) {
+      throw err;
+    }
     console.warn('Direct extension prompt exception:', err);
     destroySession();
+  }
+
+  if (abortController?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
   }
 
   // Path 2: Execution via Active Web Tab
@@ -756,6 +775,10 @@ async function executeNanoPrompt(promptText, onChunk) {
         }
       });
 
+      if (abortController?.signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       if (results && results[0] && results[0].result) {
         const resultText = results[0].result;
         onChunk(resultText);
@@ -763,7 +786,14 @@ async function executeNanoPrompt(promptText, onChunk) {
       }
     }
   } catch (tabErr) {
+    if (tabErr.name === 'AbortError' || abortController?.signal?.aborted) {
+      throw tabErr;
+    }
     console.warn('Active tab prompt exception:', tabErr);
+  }
+
+  if (abortController?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
   }
 
   // Path 3: Local Server Gateway (http://127.0.0.1:8765)
@@ -774,7 +804,8 @@ async function executeNanoPrompt(promptText, onChunk) {
       body: JSON.stringify({
         model: 'gemini-nano',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: promptText }]
-      })
+      }),
+      signal: abortController?.signal
     });
     if (res.ok) {
       const data = await res.json();
@@ -784,7 +815,15 @@ async function executeNanoPrompt(promptText, onChunk) {
         return serverText;
       }
     }
-  } catch (serverErr) {}
+  } catch (serverErr) {
+    if (serverErr.name === 'AbortError' || abortController?.signal?.aborted) {
+      throw serverErr;
+    }
+  }
+
+  if (abortController?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
 
   throw new Error('לא ניתן להריץ את המודל בסרגל הצד כרגע. פתח עמוד אינטרנט רגיל בדפדפן (למשל Google, ויקיפדיה וכד\') כדי לסכם או להפעיל את המודל.');
 }
@@ -793,9 +832,14 @@ async function executeNanoPrompt(promptText, onChunk) {
 // userDisplayText: what shows in the user bubble in chat
 // promptToSend: full prompt with page context sent to AI
 async function sendMessage(userDisplayText = null, promptToSend = null) {
+  if (isGenerating) {
+    stopGeneration();
+    return;
+  }
+
   const input = document.getElementById('userInput');
   let text = userDisplayText || input.value.trim();
-  if (!text || isGenerating) return;
+  if (!text) return;
 
   if (!userDisplayText) {
     input.value = '';
@@ -843,7 +887,7 @@ async function sendMessage(userDisplayText = null, promptToSend = null) {
     saveConversationHistory();
 
   } catch (err) {
-    if (err.name === 'AbortError') {
+    if (err.name === 'AbortError' || err.message?.includes('Aborted') || abortController?.signal?.aborted) {
       accumulatedText += '\n\n*[התשובה נעצרה]*';
     } else {
       accumulatedText = '⚠️ ' + (err.message || String(err));
@@ -873,9 +917,12 @@ function setGeneratingState(generating) {
 
 function stopGeneration() {
   if (abortController) {
-    abortController.abort();
+    try { abortController.abort(); } catch (e) {}
     abortController = null;
   }
+  destroySession();
+  setGeneratingState(false);
+  document.querySelectorAll('.typing-cursor').forEach(el => el.classList.remove('typing-cursor'));
 }
 
 // Append message bubble to chat feed with Copy button
