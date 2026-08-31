@@ -217,6 +217,120 @@ function setupEventListeners() {
   });
 }
 
+// Robust Active Tab Information Extractor
+async function getActiveTabInfo() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      return null;
+    }
+
+    // Attempt 1: Direct Content Script Message
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'GET_PAGE_DATA' });
+      if (response && response.text) {
+        return response;
+      }
+    } catch (e) {}
+
+    // Attempt 2: Scripting Execution Fallback
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const sel = window.getSelection().toString().trim();
+        const mainEl = document.querySelector('article, main, #content, .post-content') || document.body;
+        const clone = mainEl.cloneNode(true);
+        ['script', 'style', 'nav', 'footer', 'aside', '.ad', '.ads', '.comments'].forEach(s => {
+          clone.querySelectorAll(s).forEach(e => e.remove());
+        });
+        const text = (clone.innerText || clone.textContent || '').replace(/\r\n/g, '\n').replace(/\n\s*\n\s*\n/g, '\n\n').trim().substring(0, 12000);
+        return {
+          title: document.title || '',
+          url: window.location.href,
+          text: text,
+          selectedText: sel
+        };
+      }
+    });
+
+    if (results && results[0] && results[0].result) {
+      return results[0].result;
+    }
+  } catch (err) {
+    console.warn('getActiveTabInfo error:', err);
+  }
+  return null;
+}
+
+// Robust Active Tab Selection Extractor
+async function getActiveTabSelection() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      return '';
+    }
+
+    // Attempt 1: Query Content Script
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'GET_SELECTION' });
+      if (response && response.selectedText) {
+        return response.selectedText.trim();
+      }
+    } catch (e) {}
+
+    // Attempt 2: Fallback via Scripting
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection().toString().trim()
+    });
+
+    if (results && results[0] && results[0].result) {
+      return results[0].result.trim();
+    }
+  } catch (err) {
+    console.warn('getActiveTabSelection error:', err);
+  }
+  return '';
+}
+
+// Page Context Actions
+async function handleSummarizePage() {
+  const pageData = await getActiveTabInfo();
+  if (pageData && pageData.text) {
+    const prompt = `[סכם את תוכן העמוד הבא בצורה תמציתית ומובנית, עם כותרת, 3-5 נקודות מפתח ומסקנה]\n\nכותרת: ${pageData.title}\nקישור: ${pageData.url}\n\nתוכן המאמר:\n${pageData.text}`;
+    sendMessage(prompt, true);
+  } else {
+    sendMessage('סכם את העמוד הנוכחי', true);
+  }
+}
+
+async function handleExplainSelection() {
+  const sel = await getActiveTabSelection();
+  if (sel) {
+    sendMessage(`[הסבר בצורה ברורה ומעמיקה את הקטע הבא שסומן בעמוד]:\n\n"${sel}"`, true);
+  } else {
+    showToast(currentLanguage === 'en' ? 'Please highlight text on the webpage first' : 'סמן טקסט בעמוד האינטרנט תחילה');
+  }
+}
+
+async function handleTranslateSelection() {
+  const sel = await getActiveTabSelection();
+  if (sel) {
+    sendMessage(`[תרגם את הטקסט הבא לעברית בצורה רהוטה וטבעית]:\n\n"${sel}"`, true);
+  } else {
+    showToast(currentLanguage === 'en' ? 'Please highlight text on the webpage first' : 'סמן טקסט בעמוד האינטרנט תחילה');
+  }
+}
+
+async function handleRewriteSelection() {
+  const sel = await getActiveTabSelection();
+  if (sel) {
+    sendMessage(`[שכתב ושפר את הטקסט הבא במשלב מקצועי, ברור ומשכנע]:\n\n"${sel}"`, true);
+  } else {
+    showToast(currentLanguage === 'en' ? 'Please highlight text on the webpage first' : 'סמן טקסט בעמוד האינטרנט תחילה');
+  }
+}
+
 // Render Saved Conversation History List
 async function renderHistoryList(filterText = '') {
   const container = document.getElementById('historyListContainer');
@@ -504,7 +618,7 @@ function getLocalAIEngine() {
 }
 
 function initEngineStatus() {
-  // Always ready
+  // Ready
 }
 
 // Create or get active AI session
@@ -651,26 +765,11 @@ async function sendMessage(overrideText = null, isDirectAction = false) {
 
   // Inject active tab context if Linked Mode is enabled (and not already an explicit tool action)
   if (isContextLinked && !isDirectAction && !overrideText) {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && tab.id && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
-        const pageData = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            const clone = document.body.cloneNode(true);
-            ['script', 'style', 'nav', 'footer', 'aside'].forEach(s => clone.querySelectorAll(s).forEach(e => e.remove()));
-            const snippet = (clone.innerText || '').replace(/\s+/g, ' ').trim().substring(0, 2500);
-            return { title: document.title, url: window.location.href, snippet };
-          }
-        });
-        if (pageData && pageData[0] && pageData[0].result) {
-          const { title, url, snippet } = pageData[0].result;
-          if (snippet) {
-            finalPrompt = `[הקשר מהאתר הפתוח "${title}" (${url})]:\n${snippet}\n\n[שאלת המשתמש]:\n${text}`;
-          }
-        }
-      }
-    } catch (e) {}
+    const pageData = await getActiveTabInfo();
+    if (pageData && pageData.text) {
+      const snippet = pageData.text.substring(0, 3000);
+      finalPrompt = `[הקשר מתוך האתר שפתוח בדפדפן - "${pageData.title}" (${pageData.url})]:\n${snippet}\n\n[שאלת המשתמש]:\n${text}`;
+    }
   }
 
   let accumulatedText = '';
@@ -824,105 +923,6 @@ function startNewChat() {
       <p class="empty-desc">${desc}</p>
     </div>
   `;
-}
-
-// Page Context Actions
-async function handleSummarizePage() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('סכם את העמוד הנוכחי', true);
-      return;
-    }
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => {
-        const clone = document.body.cloneNode(true);
-        ['script', 'style', 'nav', 'footer', 'header', 'aside', '.ad', '.ads'].forEach(s => {
-          clone.querySelectorAll(s).forEach(e => e.remove());
-        });
-        const text = (clone.innerText || '').replace(/\s+/g, ' ').trim().substring(0, 10000);
-        return { title: document.title, text: text, url: window.location.href };
-      }
-    });
-
-    if (results && results[0] && results[0].result) {
-      const { title, text, url } = results[0].result;
-      const prompt = `[סכם את תוכן העמוד הבא בצורה תמציתית ומובנית, עם כותרת, 3-5 נקודות מפתח ומסקנה]\n\nכותרת: ${title}\nקישור: ${url}\n\nתוכן המאמר:\n${text}`;
-      sendMessage(prompt, true);
-    }
-  } catch (e) {
-    sendMessage('סכם את העמוד הנוכחי', true);
-  }
-}
-
-async function handleExplainSelection() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('הסבר את המושג או הטקסט שסימנתי', true);
-      return;
-    }
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection().toString()
-    });
-
-    const selectedText = results?.[0]?.result?.trim();
-    if (selectedText) {
-      sendMessage(`[הסבר בצורה ברורה ומעמיקה את הקטע הבא]:\n\n"${selectedText}"`, true);
-    } else {
-      sendMessage('הסבר את המושג או הטקסט שסימנתי בדפדפן', true);
-    }
-  } catch (e) {
-    sendMessage('הסבר את הטקסט המסומן', true);
-  }
-}
-
-async function handleTranslateSelection() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('תרגם את הטקסט המסומן לעברית', true);
-      return;
-    }
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection().toString()
-    });
-
-    const selectedText = results?.[0]?.result?.trim();
-    if (selectedText) {
-      sendMessage(`[תרגם את הטקסט הבא לעברית בצורה רהוטה וטבעית]:\n\n"${selectedText}"`, true);
-    } else {
-      sendMessage('תרגם את הטקסט המסומן לעברית', true);
-    }
-  } catch (e) {}
-}
-
-async function handleRewriteSelection() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
-      sendMessage('שכתב ושפר את הטקסט המסומן', true);
-      return;
-    }
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection().toString()
-    });
-
-    const selectedText = results?.[0]?.result?.trim();
-    if (selectedText) {
-      sendMessage(`[שכתב את הטקסט הבא במשלב מקצועי, ברור ומשכנע]:\n\n"${selectedText}"`, true);
-    } else {
-      sendMessage('שכתב ושפר את הטקסט המסומן', true);
-    }
-  } catch (e) {}
 }
 
 // Handle Context Menu triggers

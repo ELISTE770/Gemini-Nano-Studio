@@ -1,25 +1,48 @@
-// Gemini Nano Studio Extension - Content Script for Text Extraction
+// Gemini Nano Studio Extension - Content Script for Reliable Page & Selection Extraction
 
+let lastSelectedText = '';
+
+// Continuously keep track of user selection even when focus moves to Side Panel
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection().toString().trim();
+  if (sel) {
+    lastSelectedText = sel;
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  const sel = window.getSelection().toString().trim();
+  if (sel) {
+    lastSelectedText = sel;
+  }
+});
+
+// Extract clean, readable article or webpage text
 function extractCleanPageText() {
-  const clone = document.body.cloneNode(true);
+  const currentSel = window.getSelection().toString().trim();
+  const effectiveSelection = currentSel || lastSelectedText;
 
-  // Remove elements that don't contain meaningful article text
+  // Try to find the most relevant main article container first
+  const mainArticle = document.querySelector('article, main, [role=""main""], .post-content, .article-content, #content');
+  const targetElement = mainArticle ? mainArticle.cloneNode(true) : document.body.cloneNode(true);
+
+  // Remove noise elements (scripts, styles, ads, nav, footer, sidebars)
   const selectorsToRemove = [
     'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
     'nav', 'footer', 'header', 'aside',
     '.ad', '.ads', '.advertisement', '.social-share', '.cookie-banner',
-    '#comments', '.comments'
+    '#comments', '.comments', '.sidebar', '.menu', '.nav'
   ];
 
   selectorsToRemove.forEach(sel => {
-    clone.querySelectorAll(sel).forEach(el => el.remove());
+    targetElement.querySelectorAll(sel).forEach(el => el.remove());
   });
 
-  // Extract text and clean up whitespace
-  let text = clone.innerText || clone.textContent || '';
-  text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+  // Extract and normalize text whitespace
+  let text = targetElement.innerText || targetElement.textContent || '';
+  text = text.replace(/\r\n/g, '\n').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-  // Limit to reasonable context size (~10,000 chars)
+  // Limit to reasonable context size (~12,000 chars)
   if (text.length > 12000) {
     text = text.substring(0, 12000) + '\n\n[הטקסט קוצר עקב מגבלת אורך...]';
   }
@@ -27,15 +50,19 @@ function extractCleanPageText() {
   return {
     title: document.title || '',
     url: window.location.href,
-    text: text
+    text: text,
+    selectedText: effectiveSelection
   };
 }
 
-// Listen for messages from Side Panel
+// Listen for direct queries from Side Panel or Background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'EXTRACT_PAGE_CONTENT') {
+  if (request.action === 'GET_PAGE_DATA' || request.action === 'EXTRACT_PAGE_CONTENT' || request.type === 'EXTRACT_PAGE_CONTENT') {
     const data = extractCleanPageText();
     sendResponse(data);
+  } else if (request.action === 'GET_SELECTION') {
+    const currentSel = window.getSelection().toString().trim();
+    sendResponse({ selectedText: currentSel || lastSelectedText });
   }
   return true;
 });
