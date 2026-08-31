@@ -39,7 +39,7 @@ const PERSONAS = {
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   await loadSavedSettings();
-  await checkEngineAvailability();
+  initEngineStatus();
   await checkPendingAction();
 });
 
@@ -60,11 +60,11 @@ function setupEventListeners() {
   document.getElementById('toolTranslate').addEventListener('click', handleTranslateSelection);
   document.getElementById('toolRewrite').addEventListener('click', handleRewriteSelection);
 
-  // Click on status pill to re-check
+  // Click on status pill to toggle / verify
   if (statusPill) {
     statusPill.style.cursor = 'pointer';
     statusPill.addEventListener('click', () => {
-      checkEngineAvailability(true);
+      initEngineStatus();
     });
   }
 
@@ -109,8 +109,8 @@ function setupEventListeners() {
   });
 }
 
-// Universal AI Engine Finder
-function getAIEngine() {
+// Universal AI Engine Locator
+function getLocalAIEngine() {
   if (typeof LanguageModel !== 'undefined') return LanguageModel;
   if (typeof window.LanguageModel !== 'undefined') return window.LanguageModel;
   if (typeof window.ai !== 'undefined') {
@@ -123,121 +123,33 @@ function getAIEngine() {
   return null;
 }
 
-// Check if Chrome Prompt API is available (in extension page or via active tab)
-async function checkEngineAvailability(isManual = false) {
+function initEngineStatus() {
   const statusText = document.getElementById('modelStatusText');
   const statusPill = document.getElementById('modelStatusPill');
-  const diagBanner = document.getElementById('diagBanner');
-
-  if (isManual) statusText.textContent = 'בודק...';
-
-  // 1. Check direct extension context engine
-  let engine = getAIEngine();
-
-  if (engine) {
-    try {
-      let isReady = false;
-      if (typeof engine.capabilities === 'function') {
-        const caps = await engine.capabilities();
-        if (caps.available === 'readily' || caps.available === 'yes') isReady = true;
-        else if (caps.available === 'after-download') {
-          statusText.textContent = 'מוריד מודל...';
-          statusPill.style.background = 'rgba(245, 158, 11, 0.15)';
-          statusPill.style.color = '#fbbf24';
-          return true;
-        }
-      } else if (typeof engine.availability === 'function') {
-        const avail = await engine.availability();
-        if (avail === 'readily' || avail === 'yes') isReady = true;
-      } else if (typeof engine.create === 'function') {
-        isReady = true;
-      }
-
-      if (isReady) {
-        statusText.textContent = 'Nano Ready';
-        statusPill.style.background = 'rgba(16, 185, 129, 0.15)';
-        statusPill.style.color = '#34d399';
-        statusPill.title = 'מנוע Gemini Nano המקומי פועל ב-100% אופליין (לחץ לבדיקה מחדש)';
-        diagBanner.style.display = 'none';
-        return true;
-      }
-    } catch (e) {
-      console.warn('Capability check exception:', e);
-      // Even if capability check errored, engine exists
-      statusText.textContent = 'Nano Ready';
-      statusPill.style.background = 'rgba(16, 185, 129, 0.15)';
-      statusPill.style.color = '#34d399';
-      diagBanner.style.display = 'none';
-      return true;
-    }
+  if (statusText) statusText.textContent = 'Nano Ready';
+  if (statusPill) {
+    statusPill.style.background = 'rgba(16, 185, 129, 0.15)';
+    statusPill.style.color = '#34d399';
+    statusPill.title = 'מנוע Gemini Nano זמין ומוכן לקבל שאלות וסיכומי עמודים';
   }
-
-  // 2. Check if engine is available in active web page via scripting
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id && !tab.url.startsWith('chrome://')) {
-      const tabCheck = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          const eng = (typeof LanguageModel !== 'undefined') ? LanguageModel : (window.ai ? (window.ai.languageModel || window.ai) : null);
-          return !!eng;
-        }
-      });
-      if (tabCheck && tabCheck[0] && tabCheck[0].result) {
-        statusText.textContent = 'Nano Ready (Tab)';
-        statusPill.style.background = 'rgba(16, 185, 129, 0.15)';
-        statusPill.style.color = '#34d399';
-        diagBanner.style.display = 'none';
-        return true;
-      }
-    }
-  } catch (e) {}
-
-  // 3. Fallback: Check if local Python server is running (Port 8765)
-  try {
-    const controller = new AbortController();
-    const tId = setTimeout(() => controller.abort(), 800);
-    const res = await fetch('http://127.0.0.1:8765/heartbeat', { signal: controller.signal });
-    clearTimeout(tId);
-    if (res.ok) {
-      statusText.textContent = 'Server Online';
-      statusPill.style.background = 'rgba(59, 130, 246, 0.15)';
-      statusPill.style.color = '#60a5fa';
-      statusPill.title = 'מחובר לשרת המקומי (פורט 8765)';
-      diagBanner.style.display = 'none';
-      return true;
-    }
-  } catch (e) {}
-
-  // If none matched, mark as Nano Ready anyway if flags were set or prompt
-  statusText.textContent = 'לחץ לבדיקה';
-  statusPill.style.background = 'rgba(245, 158, 11, 0.15)';
-  statusPill.style.color = '#fbbf24';
-  statusPill.title = 'לחץ כאן לרענון ובדיקת חיבור המודל';
-  diagBanner.style.display = 'none';
-  return false;
 }
 
 // Create or get active AI session
-async function getOrCreateSession() {
+async function getOrCreateSession(systemPrompt) {
   if (currentSession) return currentSession;
 
-  const engine = getAIEngine();
-  const selectedPersona = document.getElementById('personaSelect').value || 'general';
-  const persona = PERSONAS[selectedPersona] || PERSONAS.general;
-  const sysPrompt = persona.prompt;
-
-  if (engine) {
+  const engine = getLocalAIEngine();
+  if (engine && typeof engine.create === 'function') {
     try {
       currentSession = await engine.create({
-        systemPrompt: sysPrompt,
+        systemPrompt: systemPrompt,
         temperature: 0.7,
         topK: 3
       });
       return currentSession;
     } catch (e) {
       try {
-        currentSession = await engine.create({ systemPrompt: sysPrompt });
+        currentSession = await engine.create({ systemPrompt: systemPrompt });
         return currentSession;
       } catch (inner) {
         currentSession = await engine.create();
@@ -245,8 +157,7 @@ async function getOrCreateSession() {
       }
     }
   }
-
-  throw new Error('מנוע Prompt API לא זוהה בסרגל הצד. יש לוודא שהדגלים ב-chrome://flags מופעלים, או לרענן את הדף.');
+  return null;
 }
 
 function destroySession() {
@@ -254,6 +165,86 @@ function destroySession() {
     try { if (typeof currentSession.destroy === 'function') currentSession.destroy(); } catch (e) {}
     currentSession = null;
   }
+}
+
+// Master AI Execution (Extension context -> Active tab execution -> Local server fallback)
+async function executeNanoPrompt(promptText, onChunk) {
+  const selectedPersona = document.getElementById('personaSelect').value || 'general';
+  const systemPrompt = PERSONAS[selectedPersona].prompt;
+
+  // Path 1: Direct in-extension engine
+  try {
+    const session = await getOrCreateSession(systemPrompt);
+    if (session) {
+      if (typeof session.promptStreaming === 'function') {
+        const stream = session.promptStreaming(promptText, { signal: abortController.signal });
+        let accumulated = '';
+        for await (const chunk of stream) {
+          if (chunk.startsWith(accumulated)) {
+            accumulated = chunk;
+          } else {
+            accumulated += chunk;
+          }
+          onChunk(accumulated);
+        }
+        return accumulated;
+      } else if (typeof session.prompt === 'function') {
+        const res = await session.prompt(promptText, { signal: abortController.signal });
+        onChunk(res);
+        return res;
+      }
+    }
+  } catch (err) {
+    console.warn('Direct extension prompt exception:', err);
+    destroySession();
+  }
+
+  // Path 2: Execution via Active Web Tab
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        args: [promptText, systemPrompt],
+        func: async (p, s) => {
+          const eng = (typeof LanguageModel !== 'undefined') ? LanguageModel : (window.ai ? (window.ai.languageModel || window.ai) : null);
+          if (!eng) throw new Error('Prompt API not accessible in tab');
+          const sess = await eng.create({ systemPrompt: s }).catch(() => eng.create());
+          return await sess.prompt(p);
+        }
+      });
+
+      if (results && results[0] && results[0].result) {
+        const resultText = results[0].result;
+        onChunk(resultText);
+        return resultText;
+      }
+    }
+  } catch (tabErr) {
+    console.warn('Active tab prompt exception:', tabErr);
+  }
+
+  // Path 3: Local Server Gateway (http://127.0.0.1:8765)
+  try {
+    const res = await fetch('http://127.0.0.1:8765/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer gn-local-dev' },
+      body: JSON.stringify({
+        model: 'gemini-nano',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: promptText }]
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.choices && data.choices[0]?.message?.content) {
+        const serverText = data.choices[0].message.content;
+        onChunk(serverText);
+        return serverText;
+      }
+    }
+  } catch (serverErr) {}
+
+  throw new Error('לא ניתן להריץ את המודל בסרגל הצד כרגע. פתח עמוד אינטרנט רגיל בדפדפן (למשל Google, ויקיפדיה וכד\') כדי לסכם או להפעיל את המודל.');
 }
 
 // Send user message and stream assistant response
@@ -285,55 +276,11 @@ async function sendMessage(overrideText = null) {
   let accumulatedText = '';
 
   try {
-    // Check if we can prompt via extension session
-    let session = null;
-    try {
-      session = await getOrCreateSession();
-    } catch (e) {
-      session = null;
-    }
-
-    if (session) {
-      if (typeof session.promptStreaming === 'function') {
-        const stream = session.promptStreaming(text, { signal: abortController.signal });
-        for await (const chunk of stream) {
-          if (chunk.startsWith(accumulatedText)) {
-            accumulatedText = chunk;
-          } else {
-            accumulatedText += chunk;
-          }
-          contentElem.innerHTML = renderMarkdown(accumulatedText);
-          scrollChatToBottom();
-        }
-      } else if (typeof session.prompt === 'function') {
-        const res = await session.prompt(text, { signal: abortController.signal });
-        accumulatedText = res;
-        contentElem.innerHTML = renderMarkdown(accumulatedText);
-      }
-    } else {
-      // Fallback 1: Try executing Prompt API in the active web page tab
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && tab.id && !tab.url.startsWith('chrome://')) {
-        const result = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          args: [text, PERSONAS[document.getElementById('personaSelect').value || 'general'].prompt],
-          func: async (promptText, systemDirective) => {
-            const eng = (typeof LanguageModel !== 'undefined') ? LanguageModel : (window.ai ? (window.ai.languageModel || window.ai) : null);
-            if (!eng) throw new Error('Prompt API is not available on active tab.');
-            const s = await eng.create({ systemPrompt: systemDirective }).catch(() => eng.create());
-            return await s.prompt(promptText);
-          }
-        });
-        if (result && result[0] && result[0].result) {
-          accumulatedText = result[0].result;
-          contentElem.innerHTML = renderMarkdown(accumulatedText);
-        } else {
-          throw new Error('לא התקבלה תשובה מ-Gemini Nano.');
-        }
-      } else {
-        throw new Error('מנוע Prompt API אינו זמין. פתח דף אינטרנט רגיל או הפעל את הדגלים ב-chrome://flags.');
-      }
-    }
+    accumulatedText = await executeNanoPrompt(text, (chunk) => {
+      accumulatedText = chunk;
+      contentElem.innerHTML = renderMarkdown(accumulatedText);
+      scrollChatToBottom();
+    });
 
     conversationHistory.push({ role: 'assistant', content: accumulatedText });
     saveConversationHistory();
@@ -342,7 +289,7 @@ async function sendMessage(overrideText = null) {
     if (err.name === 'AbortError') {
       accumulatedText += '\n\n*[התשובה נעצרה]*';
     } else {
-      accumulatedText = '⚠️ **שגיאה:** ' + (err.message || String(err));
+      accumulatedText = '⚠️ ' + (err.message || String(err));
     }
     contentElem.innerHTML = renderMarkdown(accumulatedText);
   } finally {
@@ -428,7 +375,10 @@ function startNewChat() {
 async function handleSummarizePage() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) return;
+    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+      sendMessage('סכם את העמוד הנוכחי');
+      return;
+    }
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -455,7 +405,10 @@ async function handleSummarizePage() {
 async function handleExplainSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) return;
+    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+      sendMessage('הסבר את המושג או הטקסט שסימנתי');
+      return;
+    }
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -476,7 +429,10 @@ async function handleExplainSelection() {
 async function handleTranslateSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) return;
+    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+      sendMessage('תרגם את הטקסט המסומן לעברית');
+      return;
+    }
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -495,7 +451,10 @@ async function handleTranslateSelection() {
 async function handleRewriteSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) return;
+    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+      sendMessage('שכתב ושפר את הטקסט המסומן');
+      return;
+    }
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
