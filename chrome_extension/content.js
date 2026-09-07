@@ -22,7 +22,7 @@ function getPageExtraction() {
   const sel = (window.getSelection() ? window.getSelection().toString().trim() : '') || lastUserSelection;
   
   // Find main content container if available
-  const container = document.querySelector('article, main, [role=""main""], .mw-parser-output, .article-content, .post-content, #content, #main-content') || document.body;
+  const container = document.querySelector('article, main, [role="main"], .mw-parser-output, .article-content, .post-content, #content, #main-content') || document.body;
 
   // Extract from paragraphs and headings
   const nodes = container.querySelectorAll('h1, h2, h3, h4, p, li, blockquote');

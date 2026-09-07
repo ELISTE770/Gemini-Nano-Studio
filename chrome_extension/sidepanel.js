@@ -1209,7 +1209,7 @@ function renderMarkdown(md) {
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>)/gims, '<ul>$1</ul>');
+  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/gi, '<ul>$1</ul>');
   html = html.replace(/^>\s+(.*$)/gim, '<blockquote style="border-right: 3px solid #3b82f6; padding-right: 8px; color: #94a3b8;">$1</blockquote>');
   html = html.replace(/\n\n/g, '<p></p>');
   html = html.replace(/\n/g, '<br>');

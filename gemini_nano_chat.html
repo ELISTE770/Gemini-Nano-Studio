@@ -789,7 +789,7 @@
             <div class="flex-1 flex flex-col min-h-0 bg-surface-base relative">
                 <!-- Preview Iframe View -->
                 <div id="canvasPreviewContainer" class="flex-1 w-full h-full relative">
-                    <iframe id="canvasIframe" sandbox="allow-scripts allow-modals allow-forms allow-same-origin" class="w-full h-full border-0 bg-white dark:bg-[#121418]"></iframe>
+                    <iframe id="canvasIframe" sandbox="allow-scripts allow-modals allow-forms" class="w-full h-full border-0 bg-white dark:bg-[#121418]"></iframe>
                 </div>
 
                 <!-- Source Code View with Live Editor -->
@@ -1271,6 +1271,19 @@ console.log(data.choices[0].message.content);</div>
         </div>
     </div>
 
+    <!-- AUTO-UPDATING PROGRESS MODAL -->
+    <div id="updatingProgressModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-surface-card border border-surface-border rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl animate-message">
+            <div class="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400 text-2xl">
+                <i class="ph-bold ph-spinner animate-spin"></i>
+            </div>
+            <div class="space-y-1.5">
+                <h3 class="font-bold text-base text-white">מעדכן את Gemini Nano Studio...</h3>
+                <p id="updatingModalDesc" class="text-xs text-slate-400 leading-relaxed">מוריד את הגרסה החדשה מ-GitHub ומעדכן קבצים. המערכת תאותחל אוטומטית.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATIONS CONTAINER (התראות מערכת) -->
     <div id="toastContainer" class="fixed bottom-6 left-6 z-50 flex flex-col gap-2.5 pointer-events-none"></div>
 
@@ -1724,7 +1737,8 @@ console.log(data.choices[0].message.content);</div>
                     if (updateBtn) updateBtn.classList.remove('hidden');
                     if (notesBox && data.release_notes) {
                         notesBox.classList.remove('hidden');
-                        notesBox.innerHTML = `<strong>מה חדש ב-${data.tag_name}:</strong><br>` + marked.parse(data.release_notes.substring(0, 350));
+                        const parsedNotes = typeof marked !== 'undefined' ? marked.parse(data.release_notes.substring(0, 350)) : renderSimpleMarkdown(data.release_notes.substring(0, 350));
+                        notesBox.innerHTML = `<strong>מה חדש ב-${data.tag_name}:</strong><br>` + parsedNotes;
                     }
                     showUpdateAlertBanner(data);
                 } else {
@@ -2008,7 +2022,27 @@ console.log(data.choices[0].message.content);</div>
             try {
                 localStorage.setItem('gemini_nano_conversations', JSON.stringify(conversations));
             } catch (e) {
-                console.error("Failed to save conversations to localStorage:", e);
+                console.warn("Storage quota warning, pruning old attachments/history to fit:", e);
+                try {
+                    // Strip large base64 attachments from older messages and prune history to 25 items
+                    const pruned = conversations.map((c, idx) => {
+                        if (idx > 1) {
+                            return {
+                                ...c,
+                                messages: (c.messages || []).map(m => {
+                                    if (m.attachments && m.attachments.length > 0) {
+                                        return { ...m, attachments: m.attachments.map(a => ({ name: a.name, type: a.type, size: a.size, isPruned: true })) };
+                                    }
+                                    return m;
+                                })
+                            };
+                        }
+                        return c;
+                    }).slice(0, 25);
+                    localStorage.setItem('gemini_nano_conversations', JSON.stringify(pruned));
+                } catch (retryErr) {
+                    console.error("Critical storage quota error:", retryErr);
+                }
             }
             renderConversationsList();
             updateContextTokenGauge();
@@ -2363,74 +2397,97 @@ console.log(data.choices[0].message.content);</div>
         // MARKDOWN & CODE BLOCKS & ARTIFACTS ENHANCEMENTS
         // -------------------------------------------------------------
 
+        function renderSimpleMarkdown(text) {
+            if (!text) return '';
+            let html = escapeHtml(text);
+            html = html.replace(/```([a-z0-9]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
+                const codeId = 'code_' + Math.random().toString(36).substr(2, 6);
+                return `<div class="code-container"><div class="code-header"><span class="font-mono text-slate-400 uppercase font-semibold text-[11px]">${lang || 'code'}</span></div><pre><code id="${codeId}" class="language-${lang}">${code}</code></pre></div>`;
+            });
+            html = html.replace(/`([^`]+)`/g, '<code class="bg-surface-border/50 px-1.5 py-0.5 rounded text-blue-300 font-mono text-xs">$1</code>');
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<li>$1</li>');
+            html = html.replace(/((?:<li>.*?<\/li>\s*)+)/gi, '<ul class="list-disc pr-5 my-2 space-y-1">$1</ul>');
+            html = html.replace(/\n\n/g, '<p class="my-2"></p>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
         function renderMarkdownContent(container, rawText) {
             if (!container) return;
             
-            // Custom renderer for marked
-            const renderer = new marked.Renderer();
-            
-            renderer.code = function(codeOrObj, langArg) {
-                let code = codeOrObj;
-                let lang = langArg;
+            if (typeof marked !== 'undefined') {
+                // Custom renderer for marked
+                const renderer = new marked.Renderer();
+                
+                renderer.code = function(codeOrObj, langArg) {
+                    let code = codeOrObj;
+                    let lang = langArg;
 
-                // Support marked.js v12+ object signature: { text, lang, escaped }
-                if (typeof codeOrObj === 'object' && codeOrObj !== null) {
-                    code = codeOrObj.text || '';
-                    lang = codeOrObj.lang || '';
-                }
+                    // Support marked.js v12+ object signature: { text, lang, escaped }
+                    if (typeof codeOrObj === 'object' && codeOrObj !== null) {
+                        code = codeOrObj.text || '';
+                        lang = codeOrObj.lang || '';
+                    }
 
-                if (typeof code !== 'string') {
-                    code = String(code || '');
-                }
+                    if (typeof code !== 'string') {
+                        code = String(code || '');
+                    }
 
-                lang = (lang || '').toLowerCase().trim();
-                const escapedCode = escapeHtml(code);
-                const codeId = 'code_' + Math.random().toString(36).substr(2, 6);
+                    lang = (lang || '').toLowerCase().trim();
+                    const escapedCode = escapeHtml(code);
+                    const codeId = 'code_' + Math.random().toString(36).substr(2, 6);
 
-                let runButtons = '';
-                if (lang === 'python' || lang === 'py') {
-                    runButtons = `<button onclick="runPythonCode('${codeId}')" class="px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"><i class="ph-bold ph-play"></i> הרץ Python</button>`;
-                } else if (lang === 'javascript' || lang === 'js') {
-                    runButtons = `<button onclick="runJSCode('${codeId}')" class="px-2 py-0.5 rounded bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-500/30 flex items-center gap-1"><i class="ph-bold ph-play"></i> הרץ JS</button>`;
-                }
+                    let runButtons = '';
+                    if (lang === 'python' || lang === 'py') {
+                        runButtons = `<button onclick="runPythonCode('${codeId}')" class="px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"><i class="ph-bold ph-play"></i> הרץ Python</button>`;
+                    } else if (lang === 'javascript' || lang === 'js') {
+                        runButtons = `<button onclick="runJSCode('${codeId}')" class="px-2 py-0.5 rounded bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-500/30 flex items-center gap-1"><i class="ph-bold ph-play"></i> הרץ JS</button>`;
+                    }
 
-                let canvasBtn = `<button onclick="openInCanvas('${codeId}', '${lang || 'html'}')" class="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 flex items-center gap-1"><i class="ph-bold ph-browsers"></i> פתח ב-Canvas</button>`;
+                    let canvasBtn = `<button onclick="openInCanvas('${codeId}', '${lang || 'html'}')" class="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 flex items-center gap-1"><i class="ph-bold ph-browsers"></i> פתח ב-Canvas</button>`;
 
-                if (lang === 'mermaid') {
-                    return `<div class="mermaid my-3 p-3 bg-surface-card border border-surface-border rounded-xl flex justify-center">${code}</div>`;
-                }
+                    if (lang === 'mermaid') {
+                        return `<div class="mermaid my-3 p-3 bg-surface-card border border-surface-border rounded-xl flex justify-center">${code}</div>`;
+                    }
 
-                return `
-                    <div class="code-container">
-                        <div class="code-header">
-                            <span class="font-mono text-slate-400 uppercase font-semibold text-[11px]">${lang || 'code'}</span>
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                                ${runButtons}
-                                ${canvasBtn}
-                                <button onclick="reviewCodeFromBlock('${codeId}')" title="בצע ביקורת איכות ואבטחה לקוד" class="px-2 py-0.5 rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 flex items-center gap-1"><i class="ph-bold ph-shield-check"></i> בוחן קוד</button>
-                                <button onclick="downloadCodeBlock('${codeId}', '${lang}')" title="הורד כקובץ למחשב" class="text-slate-400 hover:text-white flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded"><i class="ph-bold ph-download-simple"></i> הורד</button>
-                                <button onclick="copyCodeBlock('${codeId}')" class="text-slate-400 hover:text-white flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded"><i class="ph-bold ph-copy"></i> העתק</button>
+                    return `
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span class="font-mono text-slate-400 uppercase font-semibold text-[11px]">${lang || 'code'}</span>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    ${runButtons}
+                                    ${canvasBtn}
+                                    <button onclick="reviewCodeFromBlock('${codeId}')" title="בצע ביקורת איכות ואבטחה לקוד" class="px-2 py-0.5 rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 flex items-center gap-1"><i class="ph-bold ph-shield-check"></i> בוחן קוד</button>
+                                    <button onclick="downloadCodeBlock('${codeId}', '${lang}')" title="הורד כקובץ למחשב" class="text-slate-400 hover:text-white flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded"><i class="ph-bold ph-download-simple"></i> הורד</button>
+                                    <button onclick="copyCodeBlock('${codeId}')" class="text-slate-400 hover:text-white flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded"><i class="ph-bold ph-copy"></i> העתק</button>
+                                </div>
                             </div>
+                            <pre><code id="${codeId}" class="language-${lang}">${escapedCode}</code></pre>
                         </div>
-                        <pre><code id="${codeId}" class="language-${lang}">${escapedCode}</code></pre>
-                    </div>
-                `;
-            };
+                    `;
+                };
 
-            marked.setOptions({
-                renderer: renderer,
-                gfm: true,
-                breaks: true
-            });
+                marked.setOptions({
+                    renderer: renderer,
+                    gfm: true,
+                    breaks: true
+                });
 
-            container.innerHTML = marked.parse(rawText);
+                container.innerHTML = marked.parse(rawText);
+            } else {
+                container.innerHTML = renderSimpleMarkdown(rawText);
+            }
 
-            // Highlight all code blocks
-            container.querySelectorAll('pre code').forEach((block) => {
-                if (!block.classList.contains('hljs') && !block.parentElement.parentElement.classList.contains('mermaid')) {
-                    hljs.highlightElement(block);
-                }
-            });
+            // Highlight all code blocks if hljs is present
+            if (typeof hljs !== 'undefined' && hljs.highlightElement) {
+                container.querySelectorAll('pre code').forEach((block) => {
+                    if (!block.classList.contains('hljs') && !block.parentElement.parentElement.classList.contains('mermaid')) {
+                        hljs.highlightElement(block);
+                    }
+                });
+            }
 
             // KaTeX auto-render math formulas: $math$ or $$math$$
             if (window.renderMathInElement) {
@@ -2470,21 +2527,7 @@ console.log(data.choices[0].message.content);</div>
                         id: 'art_blank_' + Date.now(),
                         title: 'Live Canvas',
                         type: 'html',
-                        code: '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <style>\n    body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: white; text-align: center; }\n  </style>\n</head>\n<body>\n  <div>\n    <h2>ברוך הבא ל-Live Canvas 🎨</h2>\n    <p>ערוך את הקוד בלשונית "קוד מקור" ולחץ "עדכן והרץ"!</p>\n  </div>\n
-    <!-- AUTO-UPDATING PROGRESS MODAL -->
-    <div id="updatingProgressModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-surface-card border border-surface-border rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl animate-message">
-            <div class="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400 text-2xl">
-                <i class="ph-bold ph-spinner animate-spin"></i>
-            </div>
-            <div class="space-y-1.5">
-                <h3 class="font-bold text-base text-white">מעדכן את Gemini Nano Studio...</h3>
-                <p id="updatingModalDesc" class="text-xs text-slate-400 leading-relaxed">מוריד את הגרסה החדשה מ-GitHub ומעדכן קבצים. המערכת תאותחל אוטומטית.</p>
-            </div>
-        </div>
-    </div>
-
-</body>\n</html>'
+                        code: '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <style>\n    body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: white; text-align: center; }\n  </style>\n</head>\n<body>\n  <div>\n    <h2>ברוך הבא ל-Live Canvas 🎨</h2>\n    <p>ערוך את הקוד בלשונית "קוד מקור" ולחץ "עדכן והרץ"!</p>\n  </div>\n</body>\n</html>'
                     });
                 }
             } else {
@@ -2741,15 +2784,23 @@ console.log(data.choices[0].message.content);</div>
         }
 
         async function extractPdfText(file, maxPages = 10) {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let fullText = `=== תוכן מסמך PDF: ${file.name} (סה"כ ${pdf.numPages} עמודים) ===\n`;
-            for (let p = 1; p <= Math.min(pdf.numPages, maxPages); p++) {
-                const page = await pdf.getPage(p);
-                const textContent = await page.getTextContent();
-                fullText += `--- עמוד ${p} ---\n` + textContent.items.map(i => i.str).join(' ') + '\n\n';
+            if (typeof pdfjsLib === 'undefined') {
+                return `=== תוכן מסמך PDF: ${file.name} ===\n(ספריית פענוח PDF אינה זמינה כעת במצב לא-מקוון. באפשרותך להעתיק ולהדביק את הטקסט ישירות לתיבת השיחה)`;
             }
-            return fullText;
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = `=== תוכן מסמך PDF: ${file.name} (סה"כ ${pdf.numPages} עמודים) ===\n`;
+                for (let p = 1; p <= Math.min(pdf.numPages, maxPages); p++) {
+                    const page = await pdf.getPage(p);
+                    const textContent = await page.getTextContent();
+                    fullText += `--- עמוד ${p} ---\n` + textContent.items.map(i => i.str).join(' ') + '\n\n';
+                }
+                return fullText;
+            } catch (err) {
+                console.error('PDF extraction failed:', err);
+                return `=== תוכן מסמך PDF: ${file.name} ===\n(שגיאה בפענוח מסמך ה-PDF: ${err.message || 'קובץ נעול או לא תקין'})`;
+            }
         }
 
         async function processUploadedFiles(files) {

@@ -28,6 +28,22 @@ API_KEYS = []
 LAST_HEARTBEAT = time.time()
 SERVER_RUNNING = True
 httpd_server = None
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def cleanup_old_files():
+    """Removes leftover .old or temp files from previous auto-updates."""
+    try:
+        for fname in os.listdir(SCRIPT_DIR):
+            if fname.endswith('.old') or fname == "temp_studio_update.zip":
+                fpath = os.path.join(SCRIPT_DIR, fname)
+                try:
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 
 
 GITHUB_REPO = "ELISTE770/Gemini-Nano-Studio"
@@ -105,7 +121,7 @@ def apply_github_update():
         return {'ok': False, 'error': info.get('error', 'לא נמצא קובץ עדכון ב-GitHub')}
     
     zip_url = info['zip_url']
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = SCRIPT_DIR
     temp_zip = os.path.join(script_dir, "temp_studio_update.zip")
     
     req = urllib.request.Request(zip_url, headers={'User-Agent': f'GeminiNanoStudio/{APP_VERSION}'})
@@ -116,7 +132,7 @@ def apply_github_update():
         # Extract files safely
         with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
             for member in zip_ref.namelist():
-                # Never overwrite user configuration
+                # Never overwrite user configuration or custom personas
                 if os.path.basename(member) == CONFIG_FILE:
                     continue
                 # Handle root folder inside zip if zipped as a folder
@@ -129,12 +145,29 @@ def apply_github_update():
                         continue
                 
                 target_path = os.path.join(script_dir, norm_name)
+                # Zip-Slip security check: target must reside safely inside script_dir
+                target_abs = os.path.abspath(target_path)
+                if os.path.commonpath([script_dir, target_abs]) != script_dir:
+                    continue
+
                 if member.endswith('/'):
                     os.makedirs(target_path, exist_ok=True)
                 else:
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                    with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
-                        shutil.copyfileobj(src, dst)
+                    # Resilient write with Windows file-lock fallback (renaming locked files)
+                    try:
+                        with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
+                            shutil.copyfileobj(src, dst)
+                    except (PermissionError, OSError):
+                        old_path = target_path + ".old"
+                        try:
+                            if os.path.exists(old_path):
+                                os.remove(old_path)
+                            os.rename(target_path, old_path)
+                        except Exception:
+                            pass
+                        with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
+                            shutil.copyfileobj(src, dst)
         
         try:
             os.remove(temp_zip)
@@ -390,12 +423,6 @@ class AutoShutdownHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             SERVER_RUNNING = False
             threading.Thread(target=lambda: (time.sleep(0.5), os._exit(0))).start()
-            return
-
-        elif self.path == '/restart':
-            # Reset heartbeat and keep server alive & healthy for instant page reload
-            LAST_HEARTBEAT = time.time() + 10  # 10s grace period for reload
-            self.send_json({'ok': True, 'status': 'restarted', 'message': 'Server and session refreshed'})
             return
 
         elif self.path == '/api/v1/keys/generate':
@@ -686,13 +713,15 @@ def open_browser():
     
     webbrowser.open(url)
 
-class ReusableTCPServer(socketserver.TCPServer):
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+    daemon_threads = True
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = SCRIPT_DIR
     os.chdir(script_dir)
 
+    cleanup_old_files()
     load_server_config()
 
     # Start background heartbeat watchdog
@@ -706,7 +735,7 @@ if __name__ == "__main__":
     httpd = None
     for attempt in range(20):
         try:
-            httpd = ReusableTCPServer((HOST, PORT), AutoShutdownHandler)
+            httpd = ThreadedTCPServer((HOST, PORT), AutoShutdownHandler)
             break
         except OSError:
             time.sleep(0.4)
