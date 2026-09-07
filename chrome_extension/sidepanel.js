@@ -281,7 +281,7 @@ async function getActiveTabInfo() {
         return {
           title: document.title || 'עמוד אינטרנט',
           url: window.location.href,
-          text: fullText.substring(0, 12000),
+          text: fullText.substring(0, 10000),
           selectedText: sel
         };
       }
@@ -343,7 +343,8 @@ async function handleSummarizePage() {
   }
 
   const userDisplay = `📑 סכם את העמוד: "${pageData.title}"`;
-  const actualPrompt = `[הוראה]: סכם את תוכן המאמר/העמוד הבא בצורה תמציתית ומובנית בעברית: כותרת, 3-5 נקודות מפתח מרכזיות, ומסקנה סופית.\n\n[כותרת העמוד]: ${pageData.title}\n[קישור]: ${pageData.url}\n\n[תוכן המאמר לסיכום]:\n${pageData.text}`;
+  const snippet = pageData.text.length > 3500 ? pageData.text.substring(0, 3500) + '\n[...]' : pageData.text;
+  const actualPrompt = `[הוראה]: סכם את תוכן המאמר/העמוד הבא בצורה תמציתית ומובנית בעברית: כותרת, 3-5 נקודות מפתח מרכזיות, ומסקנה סופית.\n\n[כותרת העמוד]: ${pageData.title}\n[קישור]: ${pageData.url}\n\n[תוכן המאמר לסיכום]:\n${snippet}`;
   
   sendMessage(userDisplay, actualPrompt);
 }
@@ -714,7 +715,7 @@ function destroySession() {
   }
 }
 
-// Master AI Execution (Extension context -> Active tab execution -> Local server fallback)
+// Master AI Execution (Extension context -> Active tab execution in MAIN world -> Local server fallback)
 async function executeNanoPrompt(promptText, onChunk) {
   if (abortController?.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
@@ -760,18 +761,49 @@ async function executeNanoPrompt(promptText, onChunk) {
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  // Path 2: Execution via Active Web Tab
+  // Path 2: Execution via Active Web Tab inside MAIN JavaScript world
   try {
     const tab = await getActiveWebTab();
-    if (tab && tab.id && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+    if (tab && tab.id && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('about:')) {
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
+        world: 'MAIN', // <--- Execute directly in webpage's JavaScript realm where window.ai & LanguageModel are exposed!
         args: [promptText, systemPrompt],
         func: async (p, s) => {
-          const eng = (typeof LanguageModel !== 'undefined') ? LanguageModel : (window.ai ? (window.ai.languageModel || window.ai) : null);
-          if (!eng) throw new Error('Prompt API not accessible in tab');
-          const sess = await eng.create({ systemPrompt: s }).catch(() => eng.create());
-          return await sess.prompt(p);
+          let eng = null;
+          if (typeof LanguageModel !== 'undefined') eng = LanguageModel;
+          else if (typeof window.LanguageModel !== 'undefined') eng = window.LanguageModel;
+          else if (typeof window.ai !== 'undefined') {
+            eng = window.ai.languageModel || window.ai.assistant || window.ai;
+          } else if (typeof self !== 'undefined' && self.ai) {
+            eng = self.ai.languageModel || self.ai.assistant || self.ai;
+          }
+
+          if (!eng) {
+            throw new Error('מודל ה-AI לא הופעל בדפדפן. ודא שהדגלים ב-chrome://flags מופעלים.');
+          }
+
+          let sess = null;
+          try {
+            sess = await eng.create({ systemPrompt: s, temperature: 0.7, topK: 3 });
+          } catch (e1) {
+            try {
+              sess = await eng.create({ systemPrompt: s });
+            } catch (e2) {
+              sess = await eng.create();
+            }
+          }
+
+          if (!sess) throw new Error('לא ניתן היה ליצור סשן של Gemini Nano');
+
+          let safePrompt = p;
+          if (safePrompt.length > 4500) {
+            safePrompt = safePrompt.substring(0, 4500) + '\n[סוף הטקסט לסיכום]';
+          }
+
+          const res = await sess.prompt(safePrompt);
+          try { if (typeof sess.destroy === 'function') sess.destroy(); } catch (e) {}
+          return res;
         }
       });
 
@@ -825,7 +857,7 @@ async function executeNanoPrompt(promptText, onChunk) {
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  throw new Error('לא ניתן להריץ את המודל בסרגל הצד כרגע. פתח עמוד אינטרנט רגיל בדפדפן (למשל Google, ויקיפדיה וכד\') כדי לסכם או להפעיל את המודל.');
+  throw new Error('מודל Gemini Nano אינו זמין כרגע. ודא שהדגלים מופעלים ב-chrome://flags (או הפעל את השרת המקומי באמצעות Start_Gemini_Nano.bat).');
 }
 
 // Send user message and stream assistant response
