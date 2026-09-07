@@ -78,3 +78,34 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   await chrome.storage.local.set({ pendingAction: payload });
   chrome.runtime.sendMessage(payload).catch(() => {});
 });
+
+// GitHub Release Checker & Notification Badge
+async function checkGithubReleaseBadge() {
+  try {
+    const res = await fetch('https://api.github.com/repos/ELISTE770/Gemini-Nano-Studio/releases/latest');
+    if (res.ok) {
+      const data = await res.json();
+      const tag = data.tag_name || '';
+      const remoteVer = tag.replace(/^v/, '').trim();
+      const currentVer = chrome.runtime.getManifest().version;
+
+      if (remoteVer.localeCompare(currentVer, undefined, { numeric: true, sensitivity: 'base' }) > 0) {
+        chrome.action.setBadgeText({ text: 'NEW' });
+        chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
+        chrome.action.setTitle({ title: `Gemini Nano Studio - גרסה חדשה זמינה (${tag})!` });
+      } else {
+        chrome.action.setBadgeText({ text: '' });
+      }
+    }
+  } catch (e) {}
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  checkGithubReleaseBadge();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'check_release_alarm') {
+    checkGithubReleaseBadge();
+  }
+});

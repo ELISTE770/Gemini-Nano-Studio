@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   await loadSavedSettings();
   initEngineStatus();
+  checkExtensionUpdate();
   await checkPendingAction();
 });
 
@@ -175,6 +176,17 @@ function setupEventListeners() {
   if (modalExportBtn) modalExportBtn.addEventListener('click', exportChatHistory);
   if (modalClearBtn) modalClearBtn.addEventListener('click', startNewChat);
   if (modalRefreshBtn) modalRefreshBtn.addEventListener('click', handleRefresh);
+  
+  const extCheckUpdateBtn = document.getElementById('extCheckUpdateBtn');
+  const extDownloadUpdateBtn = document.getElementById('extDownloadUpdateBtn');
+  if (extCheckUpdateBtn) {
+    extCheckUpdateBtn.addEventListener('click', () => checkExtensionUpdate(true));
+  }
+  if (extDownloadUpdateBtn) {
+    extDownloadUpdateBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'https://github.com/ELISTE770/Gemini-Nano-Studio/releases/latest' });
+    });
+  }
 
   // Voice Dictation Click
   if (voiceBtn) {

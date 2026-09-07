@@ -15,9 +15,12 @@ import re
 import socket
 import secrets
 import ipaddress
+import zipfile
+import shutil
+import tempfile
 
 CONFIG_FILE = "server_config.json"
-APP_VERSION = "0.8.9"
+APP_VERSION = "0.9.0"
 HOST = "127.0.0.1"
 PORT = 8765
 LAUNCH_MODE = "app"  # "app" or "browser"
@@ -25,6 +28,126 @@ API_KEYS = []
 LAST_HEARTBEAT = time.time()
 SERVER_RUNNING = True
 httpd_server = None
+
+
+GITHUB_REPO = "ELISTE770/Gemini-Nano-Studio"
+
+def parse_version_tuple(v_str):
+    if not v_str:
+        return (0, 0, 0)
+    clean = re.sub(r'^[^\d]*', '', str(v_str).strip())
+    parts = []
+    for p in clean.split('.'):
+        try:
+            num = int(re.search(r'\d+', p).group())
+            parts.append(num)
+        except Exception:
+            parts.append(0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+def check_github_update():
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    req = urllib.request.Request(url, headers={'User-Agent': f'GeminiNanoStudio/{APP_VERSION}'})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as res:
+            if res.status == 200:
+                data = json.loads(res.read().decode('utf-8'))
+                tag = data.get('tag_name', '')
+                remote_ver = tag.lstrip('v').strip()
+                local_ver_t = parse_version_tuple(APP_VERSION)
+                remote_ver_t = parse_version_tuple(remote_ver)
+                has_update = remote_ver_t > local_ver_t
+                
+                zip_url = ""
+                for asset in data.get('assets', []):
+                    name = asset.get('name', '').lower()
+                    if name.endswith('.zip') and 'studio' in name:
+                        zip_url = asset.get('browser_download_url', '')
+                        break
+                if not zip_url and data.get('zipball_url'):
+                    zip_url = data.get('zipball_url')
+
+                return {
+                    'ok': True,
+                    'has_update': has_update,
+                    'current_version': APP_VERSION,
+                    'latest_version': remote_ver,
+                    'tag_name': tag,
+                    'release_name': data.get('name', tag),
+                    'release_notes': data.get('body', ''),
+                    'published_at': data.get('published_at', ''),
+                    'html_url': data.get('html_url', f"https://github.com/{GITHUB_REPO}/releases/latest"),
+                    'zip_url': zip_url
+                }
+    except Exception as e:
+        return {'ok': False, 'error': str(e), 'current_version': APP_VERSION, 'has_update': False}
+    return {'ok': False, 'error': 'Failed to check GitHub releases', 'current_version': APP_VERSION, 'has_update': False}
+
+def restart_server():
+    time.sleep(0.6)
+    py_exe = sys.executable or "pythonw.exe"
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    try:
+        subprocess.Popen([py_exe, script_path, "--restarted"], cwd=script_dir)
+    except Exception:
+        try:
+            subprocess.Popen(["pythonw.exe", script_path, "--restarted"], cwd=script_dir)
+        except Exception:
+            pass
+    os._exit(0)
+
+def apply_github_update():
+    info = check_github_update()
+    if not info.get('ok') or not info.get('zip_url'):
+        return {'ok': False, 'error': info.get('error', 'לא נמצא קובץ עדכון ב-GitHub')}
+    
+    zip_url = info['zip_url']
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_zip = os.path.join(script_dir, "temp_studio_update.zip")
+    
+    req = urllib.request.Request(zip_url, headers={'User-Agent': f'GeminiNanoStudio/{APP_VERSION}'})
+    try:
+        with urllib.request.urlopen(req, timeout=40) as response, open(temp_zip, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
+        
+        # Extract files safely
+        with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+            for member in zip_ref.namelist():
+                # Never overwrite user configuration
+                if os.path.basename(member) == CONFIG_FILE:
+                    continue
+                # Handle root folder inside zip if zipped as a folder
+                norm_name = member
+                if '/' in norm_name and not norm_name.startswith('chrome_extension/'):
+                    parts = norm_name.split('/', 1)
+                    if len(parts) > 1 and parts[1]:
+                        norm_name = parts[1]
+                    else:
+                        continue
+                
+                target_path = os.path.join(script_dir, norm_name)
+                if member.endswith('/'):
+                    os.makedirs(target_path, exist_ok=True)
+                else:
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
+                        shutil.copyfileobj(src, dst)
+        
+        try:
+            os.remove(temp_zip)
+        except Exception:
+            pass
+        
+        threading.Thread(target=restart_server, daemon=True).start()
+        return {'ok': True, 'updated_to': info.get('latest_version')}
+    except Exception as e:
+        if os.path.exists(temp_zip):
+            try: os.remove(temp_zip)
+            except Exception: pass
+        return {'ok': False, 'error': f'שגיאה בהחלת העדכון: {str(e)}'}
 
 PRIVATE_NETWORKS = [
     ipaddress.ip_network("127.0.0.0/8"),
@@ -38,9 +161,17 @@ PRIVATE_NETWORKS = [
 
 def is_local_origin(origin):
     if not origin:
-        return False
+        return True
     clean_origin = origin.strip().rstrip('/')
-    return bool(re.match(r'^https?://(127\.0\.0\.1|localhost)(:\d+)?$', clean_origin, re.IGNORECASE))
+    if clean_origin in ("null", "file://") or clean_origin.startswith("file:"):
+        return True
+    if clean_origin.startswith("chrome-extension://") or clean_origin.startswith("moz-extension://"):
+        return True
+    if bool(re.match(r'^https?://(127\.0\.0\.1|localhost)(:\d+)?$', clean_origin, re.IGNORECASE)):
+        return True
+    if HOST == "0.0.0.0" and bool(re.match(r'^https?://(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$', clean_origin)):
+        return True
+    return False
 
 def is_internal_host(hostname):
     if not hostname:
@@ -220,6 +351,10 @@ class AutoShutdownHandler(http.server.SimpleHTTPRequestHandler):
                     }
                 ]
             })
+            return
+        elif self.path == '/api/check_update':
+            data = check_github_update()
+            self.send_json(data)
             return
         elif self.path == '/api/personas':
             personas_path = os.path.join(SCRIPT_DIR, 'custom_personas.json')
@@ -473,6 +608,24 @@ class AutoShutdownHandler(http.server.SimpleHTTPRequestHandler):
                 })
             except Exception as ex:
                 self.send_json({'ok': False, 'error': str(ex)}, 500)
+            return
+
+        elif self.path == '/api/apply_update':
+            origin = self.headers.get('Origin', '')
+            if not is_local_origin(origin):
+                self.send_json({'ok': False, 'error': 'Forbidden: Invalid origin'}, 403)
+                return
+            res = apply_github_update()
+            self.send_json(res)
+            return
+
+        elif self.path == '/restart':
+            origin = self.headers.get('Origin', '')
+            if not is_local_origin(origin):
+                self.send_json({'ok': False, 'error': 'Forbidden: Invalid origin'}, 403)
+                return
+            threading.Thread(target=restart_server, daemon=True).start()
+            self.send_json({'ok': True, 'message': 'Restarting server...'})
             return
 
         elif self.path == '/api/personas':

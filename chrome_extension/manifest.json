@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gemini Nano Studio - AI Side Panel",
-  "version": "0.8.9",
+  "version": "0.9.0",
   "description": "100% Private, On-Device Local AI Assistant powered by Chrome's built-in Gemini Nano model. Chat, summarize pages, explain code, and rewrite text.",
   "icons": {
     "16": "icons/icon16.png",
@@ -15,7 +15,8 @@
     "activeTab",
     "scripting",
     "storage",
-    "tabs"
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"

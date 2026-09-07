@@ -1,4 +1,4 @@
-# 🌟 Gemini Nano Studio (v0.8.9)
+# 🌟 Gemini Nano Studio (v0.9.0)
 
 <div align="center">
 
@@ -7,7 +7,7 @@
 **100% Private, On-Device, High-Speed Local AI Studio Powered by Chrome's Built-in Gemini Nano Model.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.8.9-emerald.svg)]()
+[![Version](https://img.shields.io/badge/version-0.9.0-emerald.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Mac%20%7C%20Linux-indigo.svg)]()
 
 [עברית](#-תכונות-מרכזיות) | [English](#-key-features) | [Quick Start](#-quick-start) | [Troubleshooting](#-troubleshooting)
@@ -57,13 +57,14 @@ The studio will automatically open in your browser at http://127.0.0.1:8765.
 
 ---
 
-## 📦 What's New in v0.8.9
+## 📦 What's New in v0.9.0
 
 - 🔒 **Security Hardening:** Strict local Origin validation on dangerous endpoints (/api/run_python, /api/config) and SSRF protection on /api/fetch_url.
 - 🛠️ **Critical Runtime Fixes:** Fixed Canvas templates loading (loadArtifactIntoCanvas), PDF text extraction (xtractPdfText), and eliminated duplicate DOM IDs.
 - 🎨 **Canvas Full-Screen:** Added responsive toggle and 100% full-screen maximization mode.
 - 🌐 **Comprehensive i18n:** 100% translation coverage for all UI modals, buttons, badges, and toasts.
-- ⚡ **Performance:** Throttled streaming message renderer with equestAnimationFrame and optimized watchdog heartbeat.
+- ⚡ **Performance:** Throttled streaming message renderer with 
+equestAnimationFrame and optimized watchdog heartbeat.
 
 ---
 
