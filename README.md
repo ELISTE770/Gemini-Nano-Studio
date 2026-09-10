@@ -39,9 +39,9 @@
 
 ### 2. Launch Gemini Nano Studio
 Double-click Start_Gemini_Nano.bat or run:
-`ash
+```bash
 python Gemini_Nano.pyw
-`
+```
 The studio will automatically open in your browser at http://127.0.0.1:8765.
 
 ---
@@ -59,12 +59,19 @@ The studio will automatically open in your browser at http://127.0.0.1:8765.
 
 ## 📦 What's New in v0.9.0
 
+- 🔄 **Automatic Updates:** New versions are detected in the background from GitHub Releases and applied in one click, with an automatic restart that preserves your settings. A blue **NEW** badge appears on the Chrome toolbar icon and a banner at the top of the chat.
+- 🎨 **Offline & Filter-Resistant Styling:** A self-contained styling engine with no dependency on external CDNs, so the interface renders fully styled behind strict content filters (Netfree, Etrog, Rimon) or with no network connection at all.
+- 🐍 **Smarter Python Discovery:** `Start_Gemini_Nano.bat` now finds Python anywhere Windows puts it (LocalAppData, Program Files, the `py` launcher), releases the interface immediately when stop is pressed, and routes server addresses for direct opening, a local server, LAN access and the Chrome extension.
+
+---
+
+## 📦 What's New in v0.8.9
+
 - 🔒 **Security Hardening:** Strict local Origin validation on dangerous endpoints (/api/run_python, /api/config) and SSRF protection on /api/fetch_url.
-- 🛠️ **Critical Runtime Fixes:** Fixed Canvas templates loading (loadArtifactIntoCanvas), PDF text extraction (xtractPdfText), and eliminated duplicate DOM IDs.
+- 🛠️ **Critical Runtime Fixes:** Fixed Canvas templates loading (loadArtifactIntoCanvas), PDF text extraction (`extractPdfText`), and eliminated duplicate DOM IDs.
 - 🎨 **Canvas Full-Screen:** Added responsive toggle and 100% full-screen maximization mode.
 - 🌐 **Comprehensive i18n:** 100% translation coverage for all UI modals, buttons, badges, and toasts.
-- ⚡ **Performance:** Throttled streaming message renderer with 
-equestAnimationFrame and optimized watchdog heartbeat.
+- ⚡ **Performance:** Throttled streaming message renderer with `requestAnimationFrame` and optimized watchdog heartbeat.
 
 ---
 
